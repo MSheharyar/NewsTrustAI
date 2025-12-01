@@ -1,104 +1,111 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 class HistoryScreen extends StatelessWidget {
   const HistoryScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Example data — replace with dynamic data later
-    final List<Map<String, dynamic>> verifiedNews = [
-      {
-        "title": "Government passes AI regulation bill",
-        "status": "True",
-        "confidence": 0.92,
-        "verifiedBy": "AI Model"
-      },
-      {
-        "title": "New COVID variant found in Pakistan",
-        "status": "False",
-        "confidence": 0.87,
-        "verifiedBy": "AI + Manual Review"
-      },
-      {
-        "title": "Facebook to ban all fake news accounts",
-        "status": "Partially True",
-        "confidence": 0.65,
-        "verifiedBy": "AI Model"
-      },
-    ];
-
-    Color getStatusColor(String status) {
-      switch (status.toLowerCase()) {
-        case "true":
-          return Colors.green;
-        case "false":
-          return Colors.red;
-        case "partially true":
-          return Colors.orange;
-        default:
-          return Colors.grey;
-      }
-    }
-
     return Scaffold(
+      backgroundColor: const Color(0xFFF0F4F8),
       appBar: AppBar(
-        title: const Text("Verification History"),
-        backgroundColor: Colors.indigo,
+        title: const Text("Scan History", style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+        automaticallyImplyLeading: false,
+        actions: [
+          IconButton(
+            icon: const Icon(LucideIcons.trash2, color: Colors.grey),
+            onPressed: () {}, // Clear history logic
+          )
+        ],
       ),
       body: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: verifiedNews.length,
+        padding: const EdgeInsets.all(20),
+        itemCount: 8, // Dummy data count
         itemBuilder: (context, index) {
-          final news = verifiedNews[index];
-          return Card(
-            elevation: 4,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            margin: const EdgeInsets.only(bottom: 16),
-            child: ListTile(
-              leading: Icon(
-                Icons.article,
-                color: getStatusColor(news["status"]),
-                size: 40,
-              ),
-              title: Text(
-                news["title"],
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 5),
-                  Text(
-                    "Status: ${news["status"]}",
-                    style: TextStyle(
-                      color: getStatusColor(news["status"]),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  Text(
-                    "Confidence: ${(news["confidence"] * 100).toStringAsFixed(1)}%",
-                  ),
-                  Text("Verified by: ${news["verifiedBy"]}"),
-                ],
-              ),
-              onTap: () {
-                // Navigate to result details screen (reuse VerificationResultScreen)
-                Navigator.pushNamed(
-                  context,
-                  '/result',
-                  arguments: {
-                    'newsTitle': news['title'],
-                    'verificationStatus': news['status'],
-                    'confidence': news['confidence'],
-                    'verifiedBy': news['verifiedBy'],
-                  },
-                );
-              },
-            ),
+          // Dummy logic for variety
+          bool isFake = index % 3 == 0; 
+          String type = index % 2 == 0 ? "Link" : "Text";
+          
+          return _HistoryCard(
+            title: isFake ? "Viral WhatsApp Forward #$index" : "BBC News Article #$index",
+            date: "Today, 10:3$index AM",
+            isFake: isFake,
+            type: type,
           );
         },
+      ),
+    );
+  }
+}
+
+class _HistoryCard extends StatelessWidget {
+  final String title;
+  final String date;
+  final bool isFake;
+  final String type;
+
+  const _HistoryCard({required this.title, required this.date, required this.isFake, required this.type});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 15),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8)],
+      ),
+      child: Row(
+        children: [
+          // Status Icon
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isFake ? Colors.red[50] : Colors.green[50],
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isFake ? LucideIcons.alertTriangle : LucideIcons.shieldCheck,
+              color: isFake ? Colors.red : Colors.green,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 15),
+          
+          // Details
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(
+                      type == "Link" ? LucideIcons.link : LucideIcons.fileText,
+                      size: 12,
+                      color: Colors.grey,
+                    ),
+                    const SizedBox(width: 4),
+                    Text("$type • $date", style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          
+          // Arrow
+          const Icon(LucideIcons.chevronRight, size: 18, color: Colors.grey),
+        ],
       ),
     );
   }
