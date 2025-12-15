@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
-import 'screens/login_screen.dart';
+import 'screens/welcome_screen.dart';
 import 'screens/home_screen.dart';
-import 'screens/verification_result_screen.dart';
-import 'screens/history_screen.dart';
-import 'screens/verification_progress_screen.dart';
 
 void main() {
   runApp(const NewsVerifierApp());
@@ -15,26 +12,33 @@ class NewsVerifierApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'NewsTrustAI',
+      title: 'NewsTrust AI',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(primarySwatch: Colors.indigo),
-      initialRoute: '/login',
+      
+      theme: ThemeData(
+        scaffoldBackgroundColor: const Color(0xFFF0F4F8),
+        primarySwatch: Colors.blue,                
+        
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          centerTitle: true,
+          iconTheme: IconThemeData(color: Colors.black87),
+          titleTextStyle: TextStyle(
+            color: Colors.black87, 
+            fontSize: 20, 
+            fontWeight: FontWeight.bold
+          ),
+        ),
+      ),
+      
+      // --- NAVIGATION ROUTES ---
+      initialRoute: '/welcome',
       routes: {
-        '/login': (context) => const LoginScreen(),
-        '/home': (context) => const HomeScreen(),
-        '/result': (context) => const VerificationResultScreen(
-              newsTitle: '',
-              verificationStatus: '',
-              confidence: 0.0,
-              verifiedBy: '',
-            ),
-            '/history': (context) => const HistoryScreen(),
-            '/progress': (context) => const VerificationProgressScreen(
-              title: '',
-              content: '',
-              verifiedBy: '',
-            ), 
+        '/welcome': (context) => const WelcomeScreen(),
+        '/home': (context) => const HomeScreen(), 
       },
+      
     );
   }
 }

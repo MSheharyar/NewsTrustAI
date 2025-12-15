@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Required for Clipboard
+import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:newstrustai/services/api_service.dart';
+
+import '../services/api_service.dart';
+import 'result_screen.dart';
 
 class VerifyLinkScreen extends StatefulWidget {
   const VerifyLinkScreen({super.key});
@@ -12,7 +15,9 @@ class VerifyLinkScreen extends StatefulWidget {
 
 class _VerifyLinkScreenState extends State<VerifyLinkScreen> {
   final TextEditingController _controller = TextEditingController();
+
   bool _isLoading = false;
+  String? _errorText;
 
   @override
   void dispose() {
@@ -20,119 +25,98 @@ class _VerifyLinkScreenState extends State<VerifyLinkScreen> {
     super.dispose();
   }
 
-  // Helper to paste from clipboard
   Future<void> _pasteFromClipboard() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     if (data?.text != null) {
       setState(() {
-        _controller.text = data!.text!;
+        _controller.text = data!.text!.trim();
+        _errorText = null;
       });
     }
   }
 
-  void _verifyLink() async {
-    String url = _controller.text.trim();
-    
-    // 1. Basic Validation
-    if (url.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enter a URL to verify")),
-      );
-      return;
-    }
-    
-    // Simple regex for URL validation
-    if (!url.startsWith('http')) {
-       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enter a valid URL (starting with http/https)")),
-      );
-      return;
-    }
-
-    // 2. Loading State
-    setState(() => _isLoading = true);
-
-    // 3. API Call (Assumes you have a verifyLink method in ApiService)
-    // If you haven't created it yet, this will just be a placeholder call.
-    final result = await ApiService.verifyLink(url); 
-
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-
-    // 4. Handle Result
-    if (result.containsKey("error")) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result["error"])),
-      );
-    } else {
-      _showResultDialog(result["result"], result["confidence"]);
-    }
+  bool _isValidUrl(String url) {
+    if (url.isEmpty) return false;
+    if (!url.startsWith("http://") && !url.startsWith("https://")) return false;
+    final parsed = Uri.tryParse(url);
+    return parsed != null && parsed.hasScheme && parsed.host.isNotEmpty;
+    // (your old check had issues sometimes)
   }
 
-  void _showResultDialog(String label, dynamic confidence) {
-    bool isFake = label == "Fake";
-    double confValue = confidence is num ? confidence.toDouble() : 0.0;
+  Future<void> _verifyLink() async {
+    final url = _controller.text.trim();
 
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Icon
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: isFake ? Colors.red[50] : Colors.green[50],
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  isFake ? LucideIcons.alertTriangle : LucideIcons.shieldCheck,
-                  color: isFake ? Colors.red : Colors.green,
-                  size: 40,
-                ),
-              ),
-              const SizedBox(height: 16),
-              
-              Text(
-                isFake ? "Unsafe Source" : "Trusted Source",
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              
-              Text(
-                "Our analysis of the domain and content suggests this link is likely $label (${confValue.toStringAsFixed(1)}% confidence).",
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.black54),
-              ),
-              const SizedBox(height: 24),
-              
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isFake ? Colors.red : Colors.green,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  child: const Text("Done", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                ),
-              )
-            ],
+    // 1) Validate
+    if (!_isValidUrl(url)) {
+      setState(() => _errorText = "Please enter a valid URL (must start with http/https).");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Invalid URL"), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+
+    // 2) Start loading
+    setState(() {
+      _isLoading = true;
+      _errorText = null;
+    });
+
+    try {
+      // 3) Call backend with timeout so it never hangs silently
+      final result = await ApiService.analyzeLink(url).timeout(
+        const Duration(seconds: 20),
+        onTimeout: () => {
+          "error": true,
+          "message": "Request timed out. Backend may be slow or /analyze-link not working."
+        },
+      );
+
+      if (!mounted) return;
+
+      setState(() => _isLoading = false);
+
+      // Debug prints
+      // ignore: avoid_print
+      print("ANALYZE LINK RESULT: $result");
+
+      // 4) Show errors clearly
+      if (result["error"] == true) {
+        final msg = (result["message"] ?? "Unknown error").toString();
+        setState(() => _errorText = msg);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: Colors.red),
+        );
+        return;
+      }
+
+      // 5) Navigate to ResultScreen
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ResultScreen(
+            data: result,
+            usedQuery: result["query_used"]?.toString(),
           ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorText = "Unexpected error: $e";
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Unexpected error: $e"), backgroundColor: Colors.red),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F4F8), // Matches Home
+      backgroundColor: const Color(0xFFF0F4F8),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -146,196 +130,116 @@ class _VerifyLinkScreenState extends State<VerifyLinkScreen> {
         ),
         centerTitle: true,
       ),
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
+      body: Stack(
+        children: [
+          SafeArea(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight - 40),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      "Enter the news article URL",
-                      style: TextStyle(color: Colors.black54, fontSize: 14),
-                    ),
-                    const SizedBox(height: 15),
-
-                    // Input Box
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
-                            blurRadius: 15,
-                            offset: const Offset(0, 5),
-                          ),
-                        ],
-                      ),
-                      child: TextField(
-                        controller: _controller,
-                        keyboardType: TextInputType.url, // Optimized keyboard for URLs
-                        style: const TextStyle(fontSize: 16, height: 1.5),
-                        decoration: InputDecoration(
-                          hintText: "https://example.com/news...",
-                          hintStyle: TextStyle(color: Colors.grey[400]),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.all(20),
-                          // Prefix Icon
-                          prefixIcon: const Icon(LucideIcons.link, color: Colors.grey),
-                          // Suffix Icons (Paste & Clear)
-                          suffixIcon: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (_controller.text.isEmpty)
-                                IconButton(
-                                  icon: const Icon(LucideIcons.clipboard, size: 20, color: Colors.blue),
-                                  tooltip: "Paste",
-                                  onPressed: _pasteFromClipboard,
-                                )
-                              else
-                                IconButton(
-                                  icon: const Icon(LucideIcons.x, size: 20, color: Colors.grey),
-                                  onPressed: () => setState(() => _controller.clear()),
-                                ),
-                            ],
-                          ),
-                        ),
-                        onChanged: (val) => setState(() {}), // Update to show/hide suffix buttons
-                      ),
-                    ),
-
-                    const SizedBox(height: 25),
-
-                    const Text(
-                      "Recent Risky Domains",
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                    const SizedBox(height: 12),
-
-                    _LinkExampleTile(
-                      url: "http://breaking-news-247.xyz/scam",
-                      label: "Known Fake Site",
-                      isDanger: true,
-                      onTap: () => setState(() => _controller.text = "http://breaking-news-247.xyz/scam"),
-                    ),
-                    const SizedBox(height: 10),
-                    _LinkExampleTile(
-                      url: "https://bbc.com/news/world",
-                      label: "Trusted Source Example",
-                      isDanger: false,
-                      onTap: () => setState(() => _controller.text = "https://bbc.com/news/world"),
-                    ),
-
-                    const SizedBox(height: 30),
-                    
-                    // Main Action Button
-                    SizedBox(
-                      width: double.infinity,
-                      height: 55,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _verifyLink,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.purple[600], // Purple to distinguish from Text Verify
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          elevation: 2,
-                          shadowColor: Colors.purple.withOpacity(0.3),
-                        ),
-                        child: _isLoading
-                            ? const SizedBox(
-                                width: 24, height: 24,
-                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                              )
-                            : Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: const [
-                                  Icon(LucideIcons.search, color: Colors.white, size: 20),
-                                  SizedBox(width: 10),
-                                  Text(
-                                    "Analyze Link",
-                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                                  ),
-                                ],
-                              ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-// Extracted for cleanliness
-class _LinkExampleTile extends StatelessWidget {
-  final String url;
-  final String label;
-  final bool isDanger;
-  final VoidCallback onTap;
-
-  const _LinkExampleTile({
-    required this.url,
-    required this.label,
-    required this.isDanger,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade200),
-          boxShadow: [
-             BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 5, offset: const Offset(0, 2)),
-          ],
-        ),
-        child: Row(
-          children: [
-            Icon(
-              isDanger ? LucideIcons.alertCircle : LucideIcons.checkCircle,
-              size: 20,
-              color: isDanger ? Colors.red : Colors.green,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    label,
-                    style: TextStyle(
-                      color: isDanger ? Colors.red[700] : Colors.green[700],
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold
+                  const Text(
+                    "Paste the news article link below",
+                    style: TextStyle(color: Colors.black54, fontSize: 14),
+                  ),
+                  const SizedBox(height: 15),
+
+                  // INPUT BOX
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 15,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: TextField(
+                      controller: _controller,
+                      keyboardType: TextInputType.url,
+                      style: const TextStyle(fontSize: 16, height: 1.5),
+                      decoration: InputDecoration(
+                        hintText: "https://example.com/news...",
+                        hintStyle: TextStyle(color: Colors.grey[400]),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.all(20),
+                        prefixIcon: const Icon(LucideIcons.link, color: Colors.grey),
+                        suffixIcon: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_controller.text.isEmpty)
+                              IconButton(
+                                icon: const Icon(LucideIcons.clipboard, size: 20, color: Colors.blue),
+                                tooltip: "Paste",
+                                onPressed: _pasteFromClipboard,
+                              )
+                            else
+                              IconButton(
+                                icon: const Icon(LucideIcons.x, size: 20, color: Colors.grey),
+                                tooltip: "Clear",
+                                onPressed: () {
+                                  _controller.clear();
+                                  setState(() => _errorText = null);
+                                },
+                              ),
+                          ],
+                        ),
+                      ),
+                      onChanged: (_) => setState(() {}),
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    url,
-                    style: const TextStyle(color: Colors.black87, fontSize: 13),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+
+                  if (_errorText != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _errorText!,
+                      style: const TextStyle(color: Colors.red, fontSize: 13),
+                    ),
+                  ],
+
+                  const SizedBox(height: 30),
+
+                  // BUTTON
+                  SizedBox(
+                    width: double.infinity,
+                    height: 55,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _verifyLink,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue[600],
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        elevation: 2,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Icon(LucideIcons.search, color: Colors.white, size: 20),
+                          SizedBox(width: 10),
+                          Text(
+                            "Analyze Link",
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
-            const Icon(LucideIcons.arrowUpLeft, size: 16, color: Colors.grey),
-          ],
-        ),
+          ),
+
+          // ✅ LOADING OVERLAY
+          if (_isLoading)
+            Container(
+              color: Colors.black.withOpacity(0.15),
+              child: const Center(
+                child: CircularProgressIndicator(),
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -1,69 +1,94 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-/// Handles all API communication with the Django backend
 class ApiService {
-  // 👇 Change this to your actual Django server URL
-  static const String baseUrl = "http://10.0.2.2:8000/api"; 
-  // For physical device: use http://YOUR_LOCAL_IP:8000/api
+  static const String _ec2Ip = "3.107.16.132";
+  static const int _port = 8000;
 
-  /// Verify text-based news
-  static Future<Map<String, dynamic>> verifyText(String text) async {
-    final url = Uri.parse("$baseUrl/verify-text/");
+  static String get _base => "http://$_ec2Ip:$_port";
+
+  // POST /verify  body: {"query": "..."}
+  static Future<Map<String, dynamic>> verifyNews(String text) async {
     try {
+      final url = Uri.parse("$_base/verify");
       final response = await http.post(
         url,
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"text": text}),
+        body: jsonEncode({"query": text}),
       );
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
-      } else {
-        return {"error": "Server error: ${response.statusCode}"};
       }
+
+      return {
+        "error": true,
+        "message": "Server Error: ${response.statusCode}",
+        "body": response.body
+      };
     } catch (e) {
-      return {"error": "Connection failed: $e"};
+      return {"error": true, "message": "Connection Failed: $e"};
     }
   }
 
-  /// (For later) Verify link-based news
-  static Future<Map<String, dynamic>> verifyLink(String link) async {
-    final url = Uri.parse("$baseUrl/verify-link/");
-    try {
-      final response = await http.post(
-        url,
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"link": link}),
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        return {"error": "Server error: ${response.statusCode}"};
-      }
-    } catch (e) {
-      return {"error": "Connection failed: $e"};
-    }
+static Future<Map<String, dynamic>> analyzeLink(String url) async {
+  try {
+    final endpoint = Uri.parse("$_base/analyze-link");
+    final res = await http.post(
+      endpoint,
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"url": url}),
+    );
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    return {"error": true, "message": "Server Error: ${res.statusCode}", "body": res.body};
+  } catch (e) {
+    return {"error": true, "message": "Connection Failed: $e"};
   }
+}
 
-  /// (For later) Verify image-based news (OCR + model)
-  static Future<Map<String, dynamic>> verifyImage(String base64Image) async {
-    final url = Uri.parse("$baseUrl/verify-image/");
+static Future<Map<String, dynamic>> predictText(String text) async {
+  try {
+    final url = Uri.parse("$_base/predict-text");
+    final res = await http.post(
+      url,
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"text": text}),
+    );
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    return {"error": true, "message": "Server Error: ${res.statusCode}", "body": res.body};
+  } catch (e) {
+    return {"error": true, "message": "Connection Failed: $e"};
+  }
+}
+
+static Future<Map<String, dynamic>> analyzeText(String text) async {
+  try {
+    final url = Uri.parse("$_base/analyze-text");
+    final res = await http.post(
+      url,
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"text": text}),
+    );
+    if (res.statusCode == 200) return jsonDecode(res.body);
+    return {"error": true, "message": "Server Error: ${res.statusCode}", "body": res.body};
+  } catch (e) {
+    return {"error": true, "message": "Connection Failed: $e"};
+  }
+}
+
+
+  // GET /trending
+  static Future<List<dynamic>> fetchTrending() async {
     try {
-      final response = await http.post(
-        url,
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"image": base64Image}),
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        return {"error": "Server error: ${response.statusCode}"};
+      final url = Uri.parse("$_base/trending");
+      final res = await http.get(url);
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(res.body);
+        return (decoded["items"] as List<dynamic>);
       }
-    } catch (e) {
-      return {"error": "Connection failed: $e"};
+      return [];
+    } catch (_) {
+      return [];
     }
   }
 }

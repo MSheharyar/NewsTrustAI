@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
-// --- IMPORTS FOR YOUR NEW SCREENS ---
+import '../services/api_service.dart';
+
 import 'analytics_screen.dart';
 import 'history_screen.dart';
 import 'chatbot_screen.dart';
 import 'profile_screen.dart';
-
-// --- IMPORTS FOR FUNCTIONAL SCREENS ---
 import 'verify_text_screen.dart';
 import 'verify_link_screen.dart';
 import 'upload_image_screen.dart';
-import 'login_screen.dart';
-import 'allnews_screen.dart'; // Make sure you saved the "See All" screen code
+import 'welcome_screen.dart';
+import 'allnews_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -24,29 +23,22 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
 
-  // 1. Define the List of Screens
-  // We use a getter or late final to access 'context' if needed, 
-  // but since these are stateless/stateful widgets, a simple list works.
-  final List<Widget> _screens = [
-    const HomeTab(),      // The Dashboard (Index 0)
-    const AnalyticsScreen(), // Index 1
-    const HistoryScreen(),   // Index 2
-    const ChatbotScreen(),   // Index 3
-    const ProfileScreen(),   // Index 4
+  final List<Widget> _screens = const [
+    HomeTab(),
+    AnalyticsScreen(),
+    HistoryScreen(),
+    ChatbotScreen(),
+    ProfileScreen(),
   ];
 
   void _onNavTap(int index) {
-    setState(() {
-      _currentIndex = index;
-    });
+    setState(() => _currentIndex = index);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // We remove the background color here because each screen handles its own background
-      body: _screens[_currentIndex], // <--- THIS SWITCHES THE TABS
-      
+      body: _screens[_currentIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: _onNavTap,
@@ -70,52 +62,56 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// ==============================================================================
-// 2. Extracted "HomeTab" 
-// This contains all the UI that was previously inside HomeScreen's build method
-// ==============================================================================
-
-class HomeTab extends StatelessWidget {
+class HomeTab extends StatefulWidget {
   const HomeTab({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // Sample Data
-    final List<Map<String, String>> newsItems = List.generate(5, (i) {
-      return {
-        'image': 'https://picsum.photos/seed/news$i/800/450',
-        'title': 'Global News Headline #${i + 1}',
-        'desc': 'This is a short summary of news item #${i + 1}. Tap to verify.',
-        'accuracy': '${80 + (i % 5)}%'
-      };
-    });
+  State<HomeTab> createState() => _HomeTabState();
+}
 
+class _HomeTabState extends State<HomeTab> {
+  List<dynamic> _newsArticles = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTrendingNews();
+  }
+
+  Future<void> _loadTrendingNews() async {
+    final items = await ApiService.fetchTrending();
+    setState(() {
+      _newsArticles = items;
+      _isLoading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final bottomPadding = MediaQuery.of(context).padding.bottom + 20;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
       body: SafeArea(
-        bottom: false, 
+        bottom: false,
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
               _buildHeader(context),
               const SizedBox(height: 25),
 
-              // Stats
               const StatsCard(),
               const SizedBox(height: 25),
 
-              // Quick Verify Grid
               const Text(
                 "Quick Verify",
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.black87),
               ),
               const SizedBox(height: 15),
-              
+
               _QuickActionTile(
                 icon: LucideIcons.fileText,
                 title: "Verify Text",
@@ -125,7 +121,7 @@ class HomeTab extends StatelessWidget {
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VerifyTextScreen())),
               ),
               const SizedBox(height: 12),
-              
+
               _QuickActionTile(
                 icon: LucideIcons.link,
                 title: "Verify Link",
@@ -135,7 +131,7 @@ class HomeTab extends StatelessWidget {
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VerifyLinkScreen())),
               ),
               const SizedBox(height: 12),
-              
+
               _QuickActionTile(
                 icon: LucideIcons.image,
                 title: "Scan Image",
@@ -147,7 +143,7 @@ class HomeTab extends StatelessWidget {
 
               const SizedBox(height: 30),
 
-              // News Feed Header
+              // ✅ Trending Header with See All
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -159,26 +155,29 @@ class HomeTab extends StatelessWidget {
                     onPressed: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => AllNewsScreen(newsItems: newsItems)),
+                        MaterialPageRoute(builder: (_) => AllNewsScreen(newsItems: _newsArticles)),
                       );
-                    }, 
+                    },
                     child: const Text("See All", style: TextStyle(color: Colors.blue)),
                   )
                 ],
               ),
               const SizedBox(height: 10),
 
-              // News Carousel
               SizedBox(
-                height: 260,
-                child: PageView.builder(
-                  controller: PageController(viewportFraction: 0.90),
-                  padEnds: false,
-                  itemCount: newsItems.length,
-                  itemBuilder: (context, index) {
-                    return NewsCard(item: newsItems[index]);
-                  },
-                ),
+                height: 280,
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _newsArticles.isEmpty
+                        ? const Center(child: Text("No news available"))
+                        : PageView.builder(
+                            controller: PageController(viewportFraction: 0.90),
+                            padEnds: false,
+                            itemCount: _newsArticles.length > 5 ? 5 : _newsArticles.length,
+                            itemBuilder: (context, index) {
+                              return NewsCard(item: _newsArticles[index]);
+                            },
+                          ),
               ),
 
               SizedBox(height: bottomPadding),
@@ -202,17 +201,13 @@ class HomeTab extends StatelessWidget {
           ],
         ),
         IconButton(
-          onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+          onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const WelcomeScreen())),
           icon: const Icon(LucideIcons.logOut, color: Colors.black54),
         )
       ],
     );
   }
 }
-
-// ==============================================================================
-// 3. Reused Components (StatsCard, NewsCard, QuickActionTile)
-// ==============================================================================
 
 class StatsCard extends StatelessWidget {
   const StatsCard({super.key});
@@ -265,7 +260,7 @@ class StatsCard extends StatelessWidget {
     );
   }
 
-  Widget _statItem(String value, String label, Color color) {
+  static Widget _statItem(String value, String label, Color color) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -285,8 +280,12 @@ class _QuickActionTile extends StatelessWidget {
   final VoidCallback onTap;
 
   const _QuickActionTile({
-    required this.icon, required this.title, required this.subtitle,
-    required this.color, required this.iconColor, required this.onTap,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.iconColor,
+    required this.onTap,
   });
 
   @override
@@ -300,7 +299,7 @@ class _QuickActionTile extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.grey.shade100),
-           boxShadow: [
+          boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.03),
               blurRadius: 10,
@@ -335,12 +334,18 @@ class _QuickActionTile extends StatelessWidget {
 }
 
 class NewsCard extends StatelessWidget {
-  final Map<String, String> item;
+  final dynamic item;
 
   const NewsCard({super.key, required this.item});
 
   @override
   Widget build(BuildContext context) {
+    final String title = (item['title'] ?? 'No Title').toString();
+    final String desc = (item['summary'] ?? 'No summary available').toString();
+    final String source = (item['source'] ?? 'News').toString();
+    final String? imageUrl = item['imageUrl']?.toString();
+    final String? url = item['url']?.toString();
+
     return Container(
       margin: const EdgeInsets.only(right: 15, bottom: 10),
       decoration: BoxDecoration(
@@ -356,67 +361,91 @@ class NewsCard extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () {
-              // Action when clicking news card
-            },
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: Image.network(
-                    item['image']!,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(color: Colors.grey[200], child: const Icon(LucideIcons.image)),
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Column(
+          children: [
+            SizedBox(
+              height: 150,
+              width: double.infinity,
+              child: (imageUrl != null && imageUrl.isNotEmpty)
+                  ? Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: Colors.grey[200],
+                        child: const Center(child: Icon(LucideIcons.image)),
+                      ),
+                    )
+                  : Container(
+                      color: Colors.grey[200],
+                      child: const Center(child: Icon(LucideIcons.newspaper)),
+                    ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, height: 1.2),
+                    ),
+                    const SizedBox(height: 6),
+                    Expanded(
+                      child: Text(
+                        desc,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.black54, fontSize: 12, height: 1.2),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
                       children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item['title']!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        Icon(LucideIcons.globe, size: 14, color: Colors.blue[600]),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            source,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.blue[700],
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              item['desc']!,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: Colors.black54, fontSize: 11),
-                            ),
-                          ],
+                          ),
                         ),
-                        Row(
-                          children: [
-                            Icon(LucideIcons.checkCircle, size: 14, color: Colors.green[600]),
-                            const SizedBox(width: 4),
-                            Text(
-                              "Confidence: ${item['accuracy']}",
-                              style: TextStyle(color: Colors.green[700], fontSize: 11, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        )
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: (url == null || url.isEmpty)
+                              ? null
+                              : () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => VerifyLinkScreen(key: ValueKey(url)),
+                                    ),
+                                  );
+                                },
+                          icon: const Icon(LucideIcons.search, size: 16),
+                          label: const Text("Verify"),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            foregroundColor: Colors.blue,
+                            side: BorderSide(color: Colors.blue.shade200),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                        ),
                       ],
                     ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );

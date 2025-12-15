@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:newstrustai/services/api_service.dart'; // Assume this exists
 
 class UploadImageScreen extends StatefulWidget {
   const UploadImageScreen({super.key});

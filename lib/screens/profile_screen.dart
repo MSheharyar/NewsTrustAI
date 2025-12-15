@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'login_screen.dart'; // To handle logout navigation
+import 'welcome_screen.dart'; // To handle logout navigation
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -64,7 +64,7 @@ class ProfileScreen extends StatelessWidget {
                     onTap: () {
                       Navigator.pushAndRemoveUntil(
                         context, 
-                        MaterialPageRoute(builder: (_) => const LoginScreen()), 
+                        MaterialPageRoute(builder: (_) => const WelcomeScreen()), 
                         (route) => false
                       );
                     }

@@ -1,48 +1,49 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'verify_link_screen.dart';
 
 class AllNewsScreen extends StatelessWidget {
-  final List<Map<String, String>> newsItems;
+  final List<dynamic> newsItems;
 
   const AllNewsScreen({super.key, required this.newsItems});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F4F8), // Matches Home background
+      backgroundColor: const Color(0xFFF0F4F8),
       appBar: AppBar(
         title: const Text(
           "Trending News",
-          style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold),
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
-        centerTitle: true,
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(LucideIcons.arrowLeft, color: Colors.black87),
+          icon: const Icon(LucideIcons.arrowLeft, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16), // Padding around the list
-        itemCount: newsItems.length,
-        itemBuilder: (context, index) {
-          return VerticalNewsCard(item: newsItems[index]);
-        },
-      ),
+      body: newsItems.isEmpty
+          ? const Center(child: Text("No news available"))
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: newsItems.length,
+              itemBuilder: (context, index) {
+                return _buildNewsCard(context, newsItems[index]);
+              },
+            ),
     );
   }
-}
 
-class VerticalNewsCard extends StatelessWidget {
-  final Map<String, String> item;
+  Widget _buildNewsCard(BuildContext context, dynamic item) {
+    final String title = (item['title'] ?? "No Title").toString();
+    final String desc = (item['summary'] ?? "No summary available.").toString();
+    final String source = (item['source'] ?? "News Source").toString();
+    final String? imageUrl = item['imageUrl']?.toString();
+    final String? url = item['url']?.toString();
 
-  const VerticalNewsCard({super.key, required this.item});
-
-  @override
-  Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16), // Space between cards
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -54,120 +55,79 @@ class VerticalNewsCard extends StatelessWidget {
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () {
-              // --- ACTION: Navigate to verification ---
-              // Ideally, pass the text/url to the Verify screen here
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text("Analyzing: ${item['title']}"),
-                  action: SnackBarAction(label: "VERIFY", onPressed: () {
-                     // Navigate to VerifyTextScreen with data
-                  }),
-                ),
-              );
-            },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            child: (imageUrl != null && imageUrl.isNotEmpty)
+                ? Image.network(
+                    imageUrl,
+                    height: 180,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) =>
+                        Container(height: 180, color: Colors.grey[200], child: const Icon(LucideIcons.image)),
+                  )
+                : Container(height: 180, color: Colors.grey[200], child: const Center(child: Icon(LucideIcons.newspaper))),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 1. Image (Full Width)
-                AspectRatio(
-                  aspectRatio: 16 / 9, // Standard video/news aspect ratio
-                  child: Image.network(
-                    item['image']!,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      color: Colors.grey[200],
-                      child: const Center(child: Icon(LucideIcons.image, size: 40, color: Colors.grey)),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    source,
+                    style: TextStyle(color: Colors.blue[700], fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  title,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  desc,
+                  style: const TextStyle(fontSize: 13, color: Colors.black54),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: (url == null || url.isEmpty)
+                        ? null
+                        : () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => VerifyLinkScreen(key: ValueKey(url)),
+                              ),
+                            );
+                          },
+                    icon: const Icon(LucideIcons.search, size: 16),
+                    label: const Text("Verify Authenticity"),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.blue,
+                      side: BorderSide(color: Colors.blue.shade200),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                   ),
-                ),
-                
-                // 2. Content Section
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Badge Row
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.blue[50],
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              "Global News", // You can replace this with source name
-                              style: TextStyle(color: Colors.blue[700], fontSize: 10, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                          const Spacer(),
-                          Icon(LucideIcons.checkCircle, size: 14, color: Colors.green[600]),
-                          const SizedBox(width: 4),
-                          Text(
-                            "${item['accuracy']} Trust Score",
-                            style: TextStyle(color: Colors.green[700], fontSize: 12, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                      
-                      const SizedBox(height: 10),
-                      
-                      // Headline
-                      Text(
-                        item['title']!,
-                        style: const TextStyle(
-                          fontSize: 18, 
-                          fontWeight: FontWeight.bold,
-                          height: 1.3,
-                        ),
-                      ),
-                      
-                      const SizedBox(height: 8),
-                      
-                      // Description
-                      Text(
-                        item['desc']!,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: Colors.grey[600], fontSize: 14, height: 1.4),
-                      ),
-                      
-                      const SizedBox(height: 16),
-                      
-                      // "Verify Now" Action Button
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                             // Duplicate the onTap logic here if needed
-                             ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text("Opening AI Verification..."))
-                             );
-                          },
-                          icon: const Icon(LucideIcons.scanLine, size: 16),
-                          label: const Text("Verify Authenticity"),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.blue[700],
-                            side: BorderSide(color: Colors.blue.shade200),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                )
               ],
             ),
           ),
-        ),
+        ],
       ),
     );
   }
