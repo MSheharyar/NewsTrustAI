@@ -5,7 +5,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api_service.dart';
-import 'result_screen.dart';
+import 'result/result_screen.dart';
 
 class VerifyLinkScreen extends StatefulWidget {
   const VerifyLinkScreen({super.key});

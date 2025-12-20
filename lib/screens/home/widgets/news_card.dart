@@ -6,14 +6,42 @@ import '../../verify_link_screen.dart';
 class NewsCard extends StatelessWidget {
   final dynamic item;
   const NewsCard({super.key, required this.item});
+  static const String kImageProxyBase = "http://3.144.87.221:8000";
+
+  String stripHtml(String html) {
+    return html
+        .replaceAll(RegExp(r'<[^>]*>'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  String? buildSafeImageUrl(String? raw) {
+    if (raw == null) return null;
+    final u = raw.trim();
+    if (u.isEmpty) return null;
+
+    final parsed = Uri.tryParse(u);
+    if (parsed == null || (!parsed.isScheme("http") && !parsed.isScheme("https"))) {
+      return null;
+    }
+
+    final encoded = Uri.encodeComponent(u);
+    return "$kImageProxyBase/img?url=$encoded";
+  }
 
   @override
   Widget build(BuildContext context) {
     final String title = (item['title'] ?? 'No Title').toString();
-    final String desc = (item['summary'] ?? 'No summary available').toString();
+    final String descRaw = (item['summary'] ?? 'No summary available').toString();
+    final String desc = stripHtml(descRaw);
     final String source = (item['source'] ?? 'News').toString();
-    final String? imageUrl = item['imageUrl']?.toString();
+
+    final String? rawImageUrl = item['imageUrl']?.toString();
     final String? url = item['url']?.toString();
+
+    print("NewsCard imageUrl => $rawImageUrl");
+
+    final String? imageUrl = buildSafeImageUrl(rawImageUrl);
 
     return Container(
       margin: const EdgeInsets.only(right: 15, bottom: 10),
@@ -35,13 +63,20 @@ class NewsCard extends StatelessWidget {
             SizedBox(
               height: 150,
               width: double.infinity,
-              child: (imageUrl != null && imageUrl.isNotEmpty)
+              child: (imageUrl != null)
                   ? Image.network(
                       imageUrl,
                       fit: BoxFit.cover,
+                      loadingBuilder: (context, child, progress) {
+                        if (progress == null) return child;
+                        return Container(
+                          color: Colors.grey[200],
+                          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                        );
+                      },
                       errorBuilder: (_, __, ___) => Container(
                         color: Colors.grey[200],
-                        child: const Center(child: Icon(LucideIcons.image)),
+                        child: const Center(child: Icon(LucideIcons.imageOff)),
                       ),
                     )
                   : Container(

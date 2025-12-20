@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../services/api_service.dart';
-import 'result_screen.dart';
+import 'result/result_screen.dart';
 
 class VerifyTextScreen extends StatefulWidget {
   const VerifyTextScreen({super.key});
