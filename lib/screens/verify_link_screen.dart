@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api_service.dart';
 import 'result_screen.dart';
@@ -18,6 +19,16 @@ class _VerifyLinkScreenState extends State<VerifyLinkScreen> {
 
   bool _isLoading = false;
   String? _errorText;
+  String _loadingMsg = "Analyzing link...";
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(() {
+      // So suffix icon updates properly
+      if (mounted) setState(() {});
+    });
+  }
 
   @override
   void dispose() {
@@ -27,28 +38,66 @@ class _VerifyLinkScreenState extends State<VerifyLinkScreen> {
 
   Future<void> _pasteFromClipboard() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
-    if (data?.text != null) {
+    final raw = data?.text;
+    if (raw != null && raw.trim().isNotEmpty) {
       setState(() {
-        _controller.text = data!.text!.trim();
+        _controller.text = raw.trim();
         _errorText = null;
       });
     }
   }
 
+  String _normalizeUrl(String input) {
+    var url = input.trim();
+
+    // remove accidental quotes
+    url = url.replaceAll('"', '').replaceAll("'", "");
+
+    // remove whitespace inside (common paste issue)
+    url = url.replaceAll(RegExp(r"\s+"), "");
+
+    // if user pasted "www.example.com/..."
+    if (url.startsWith("www.")) {
+      url = "https://$url";
+    }
+
+    // if user pasted without scheme but has a dot
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+      if (url.contains(".")) {
+        url = "https://$url";
+      }
+    }
+
+    return url;
+  }
+
   bool _isValidUrl(String url) {
-    if (url.isEmpty) return false;
-    if (!url.startsWith("http://") && !url.startsWith("https://")) return false;
     final parsed = Uri.tryParse(url);
-    return parsed != null && parsed.hasScheme && parsed.host.isNotEmpty;
-    // (your old check had issues sometimes)
+    return parsed != null &&
+        (parsed.scheme == "http" || parsed.scheme == "https") &&
+        parsed.host.isNotEmpty;
+  }
+
+  Future<void> _openInBrowser(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   Future<void> _verifyLink() async {
-    final url = _controller.text.trim();
+    final normalized = _normalizeUrl(_controller.text);
+
+    // Update field to what we're actually sending
+    if (_controller.text.trim() != normalized) {
+      _controller.text = normalized;
+      _controller.selection = TextSelection.fromPosition(
+        TextPosition(offset: _controller.text.length),
+      );
+    }
 
     // 1) Validate
-    if (!_isValidUrl(url)) {
-      setState(() => _errorText = "Please enter a valid URL (must start with http/https).");
+    if (!_isValidUrl(normalized)) {
+      setState(() => _errorText = "Please enter a valid URL (http/https).");
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Invalid URL"), backgroundColor: Colors.orange),
       );
@@ -59,25 +108,26 @@ class _VerifyLinkScreenState extends State<VerifyLinkScreen> {
     setState(() {
       _isLoading = true;
       _errorText = null;
+      _loadingMsg = "Fetching article content...";
     });
 
     try {
-      // 3) Call backend with timeout so it never hangs silently
-      final result = await ApiService.analyzeLink(url).timeout(
-        const Duration(seconds: 20),
+      // 3) Call backend (ApiService already has timeout, but keep a UI timeout too)
+      final result = await ApiService.analyzeLink(normalized).timeout(
+        const Duration(seconds: 25),
         onTimeout: () => {
           "error": true,
-          "message": "Request timed out. Backend may be slow or /analyze-link not working."
+          "message": "Request timed out. The website may be slow/blocked or backend extraction is taking too long."
         },
       );
 
       if (!mounted) return;
 
-      setState(() => _isLoading = false);
-
-      // Debug prints
+      // Debug print
       // ignore: avoid_print
       print("ANALYZE LINK RESULT: $result");
+
+      setState(() => _isLoading = false);
 
       // 4) Show errors clearly
       if (result["error"] == true) {
@@ -90,13 +140,14 @@ class _VerifyLinkScreenState extends State<VerifyLinkScreen> {
         return;
       }
 
-      // 5) Navigate to ResultScreen
+      // 5) Navigate to ResultScreen (pass original url for display)
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => ResultScreen(
             data: result,
             usedQuery: result["query_used"]?.toString(),
+            originalText: result["link_title"]?.toString() ?? normalized,
           ),
         ),
       );
@@ -170,13 +221,18 @@ class _VerifyLinkScreenState extends State<VerifyLinkScreen> {
                         suffixIcon: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (_controller.text.isEmpty)
+                            if (_controller.text.trim().isEmpty)
                               IconButton(
                                 icon: const Icon(LucideIcons.clipboard, size: 20, color: Colors.blue),
                                 tooltip: "Paste",
                                 onPressed: _pasteFromClipboard,
                               )
-                            else
+                            else ...[
+                              IconButton(
+                                icon: const Icon(LucideIcons.externalLink, size: 20, color: Colors.blue),
+                                tooltip: "Open in browser",
+                                onPressed: () => _openInBrowser(_normalizeUrl(_controller.text)),
+                              ),
                               IconButton(
                                 icon: const Icon(LucideIcons.x, size: 20, color: Colors.grey),
                                 tooltip: "Clear",
@@ -185,10 +241,13 @@ class _VerifyLinkScreenState extends State<VerifyLinkScreen> {
                                   setState(() => _errorText = null);
                                 },
                               ),
+                            ]
                           ],
                         ),
                       ),
-                      onChanged: (_) => setState(() {}),
+                      onChanged: (_) => setState(() {
+                        _errorText = null;
+                      }),
                     ),
                   ),
 
@@ -231,12 +290,22 @@ class _VerifyLinkScreenState extends State<VerifyLinkScreen> {
             ),
           ),
 
-          // ✅ LOADING OVERLAY
+          // LOADING OVERLAY
           if (_isLoading)
             Container(
               color: Colors.black.withOpacity(0.15),
-              child: const Center(
-                child: CircularProgressIndicator(),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 12),
+                    Text(
+                      _loadingMsg,
+                      style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
               ),
             ),
         ],

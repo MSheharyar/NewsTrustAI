@@ -20,12 +20,12 @@ class ResultScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ Prefer hybrid (best), else verify, else bert
+    // Prefer hybrid (best), else verify, else bert
     final bool useHybrid = _hasHybrid;
     final bool useVerify = !useHybrid && _isVerifyFormat;
     final bool isBert = !useHybrid && !useVerify && _isBertFormat;
 
-    // ✅ Query used (for verify/hybrid)
+    // Query used (for verify/hybrid)
     final String q = (data["query_used"] ?? usedQuery ?? "").toString().trim();
 
     // Unified output variables
@@ -36,6 +36,12 @@ class ResultScreen extends StatelessWidget {
     String reason = "Analysis completed.";
     List<String> verifiedSources = [];
     List<dynamic> matches = [];
+
+    // NEW: backend matched_sources (website/url/timestamp)
+    final List<dynamic> matchedSources =
+        (data["matched_sources"] is List) ? (data["matched_sources"] as List) : const [];
+
+    int matchesFoundNumber = 0;
 
     // -------------------------------
     // 1) HYBRID FORMAT: /analyze-text
@@ -49,16 +55,15 @@ class ResultScreen extends StatelessWidget {
       confidence = finalConf;
 
       // Decide UI state from final_label
-      if (finalLabel.contains("real") || finalLabel.contains("true")) {
+      if (finalLabel.contains("real") || finalLabel.contains("true") || finalLabel.contains("authentic")) {
         isFake = false;
         isUnverified = false;
         mainTitle = "Likely Authentic";
-      } else if (finalLabel.contains("fake") || finalLabel.contains("false")) {
+      } else if (finalLabel.contains("fake") || finalLabel.contains("false") || finalLabel.contains("suspicious")) {
         isFake = true;
         isUnverified = false;
         mainTitle = "Suspicious Content";
       } else {
-        // ✅ The UI FIX YOU REQUESTED
         isFake = false;
         isUnverified = true;
         mainTitle = "Unverified (Insufficient Evidence)";
@@ -66,8 +71,10 @@ class ResultScreen extends StatelessWidget {
 
       reason = (data["final_reason"] ?? "Hybrid analysis completed.").toString();
 
-      // verify fields (optional in hybrid payload)
+      // old verify fields (optional)
       matches = (data["top_matches"] is List) ? (data["top_matches"] as List) : [];
+
+      // Sources from old top_matches (backup)
       verifiedSources = matches
           .map((m) {
             if (m is Map && m["article"] is Map) {
@@ -78,6 +85,11 @@ class ResultScreen extends StatelessWidget {
           .where((s) => s.trim().isNotEmpty)
           .toSet()
           .toList();
+
+      // Prefer new matched_sources count if present
+      matchesFoundNumber = (data["matches_found"] is num)
+          ? (data["matches_found"] as num).toInt()
+          : matchedSources.length;
     }
 
     // -------------------------------
@@ -90,6 +102,7 @@ class ResultScreen extends StatelessWidget {
           : int.tryParse("${data["count"]}") ?? 0;
 
       matches = (data["top_matches"] is List) ? (data["top_matches"] as List) : [];
+      matchesFoundNumber = count;
 
       if (matches.isNotEmpty && matches[0] is Map && matches[0]["score"] != null) {
         confidence = (matches[0]["score"] is num)
@@ -105,7 +118,6 @@ class ResultScreen extends StatelessWidget {
         mainTitle = "Likely Authentic";
         reason = "We found $count matching article(s) in our trusted sources database.";
       } else {
-        // ✅ UI FIX: don’t call it “fake” if no evidence exists
         isFake = false;
         isUnverified = true;
         mainTitle = "Unverified (Insufficient Evidence)";
@@ -152,22 +164,19 @@ class ResultScreen extends StatelessWidget {
         mainTitle = "Unverified (Insufficient Evidence)";
         reason = "Model output was unclear. Please verify using trusted sources.";
       }
+      matchesFoundNumber = 0;
     }
 
     // -------------------------------
     // Theme
     // -------------------------------
-    final Color themeColor = isUnverified
-        ? Colors.orange
-        : (isFake ? Colors.red : Colors.green);
+    final Color themeColor = isUnverified ? Colors.orange : (isFake ? Colors.red : Colors.green);
 
-    final Color bgColor = isUnverified
-        ? Colors.orange.shade50
-        : (isFake ? Colors.red.shade50 : Colors.green.shade50);
+    final Color bgColor =
+        isUnverified ? Colors.orange.shade50 : (isFake ? Colors.red.shade50 : Colors.green.shade50);
 
-    final IconData statusIcon = isUnverified
-        ? LucideIcons.helpCircle
-        : (isFake ? LucideIcons.alertTriangle : LucideIcons.shieldCheck);
+    final IconData statusIcon =
+        isUnverified ? LucideIcons.helpCircle : (isFake ? LucideIcons.alertTriangle : LucideIcons.shieldCheck);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
@@ -227,7 +236,7 @@ class ResultScreen extends StatelessWidget {
 
                   if (useHybrid || useVerify) ...[
                     Text(
-                      "Matches found: ${data["count"] ?? 0}",
+                      "Matches found: $matchesFoundNumber",
                       style: const TextStyle(color: Colors.black54),
                     ),
                   ] else if (isBert) ...[
@@ -266,7 +275,6 @@ class ResultScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(reason, style: const TextStyle(fontSize: 15, height: 1.5, color: Colors.black54)),
-
                   if (q.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     const Divider(),
@@ -283,34 +291,36 @@ class ResultScreen extends StatelessWidget {
 
             // --- 3) SOURCES + MATCHES (for verify/hybrid) ---
             if (useHybrid || useVerify) ...[
-              if (verifiedSources.isNotEmpty) ...[
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    "Matched Sources:",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87),
-                  ),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  "Checked against:",
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87),
                 ),
+              ),
+
+              // ✅ NEW: If backend provides matched_sources, show them here
+              if (matchedSources.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                ...matchedSources.take(3).map((s) => _MatchedSourceCard(source: s)).toList(),
                 const SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: verifiedSources.map((s) => _SourceChip(s, isMatch: true)).toList(),
-                ),
               ] else ...[
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    "Checked against:",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87),
-                  ),
-                ),
                 const SizedBox(height: 5),
                 const Text(
                   "No matches found in our trusted database.",
                   style: TextStyle(color: Colors.grey, fontSize: 12),
                 ),
                 const SizedBox(height: 12),
+              ],
+
+              // Chips (show matched if available, else show 4 defaults)
+              if (verifiedSources.isNotEmpty) ...[
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: verifiedSources.map((s) => _SourceChip(s, isMatch: true)).toList(),
+                ),
+              ] else ...[
                 Wrap(
                   spacing: 10,
                   runSpacing: 10,
@@ -336,7 +346,7 @@ class ResultScreen extends StatelessWidget {
                 const SizedBox(height: 12),
                 ...matches.take(3).map((m) => _MatchTile(match: m)).toList(),
               ],
-            ],            
+            ],
 
             const SizedBox(height: 30),
 
@@ -364,27 +374,27 @@ class ResultScreen extends StatelessWidget {
   }
 }
 
-class _ProbCard extends StatelessWidget {
-  final dynamic probabilities;
+class _MatchedSourceCard extends StatelessWidget {
+  final dynamic source;
 
-  const _ProbCard({required this.probabilities});
+  const _MatchedSourceCard({required this.source});
 
   @override
   Widget build(BuildContext context) {
-    String real = "-";
-    String fake = "-";
+    if (source is! Map) return const SizedBox.shrink();
+    final Map s = source as Map;
 
-    if (probabilities is Map) {
-      real = (probabilities["real"] ?? "-").toString();
-      fake = (probabilities["fake"] ?? "-").toString();
-    } else if (probabilities is List && probabilities.length >= 2) {
-      fake = probabilities[0].toString();
-      real = probabilities[1].toString();
-    }
+    final String name = (s["source"] ?? "Unknown").toString();
+    final String url = (s["url"] ?? "").toString();
+    final String publishedAt = (s["publishedAt"] ?? "").toString();
+    final String scrapedAt = (s["scrapedAt"] ?? "").toString();
+    final String time = publishedAt.isNotEmpty ? publishedAt : scrapedAt;
+    final String score = (s["score"] ?? "").toString();
+    final bool trusted = (s["trusted"] == true);
 
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
@@ -393,9 +403,48 @@ class _ProbCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text("FAKE: $fake%", style: const TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 6),
-          Text("REAL: $real%", style: const TextStyle(fontWeight: FontWeight.bold)),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  name,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (trusted)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.green[50],
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.green.shade200),
+                  ),
+                  child: Text(
+                    "Trusted",
+                    style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.w700, fontSize: 12),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (time.isNotEmpty)
+            Text("Time: $time", style: const TextStyle(color: Colors.black54, fontSize: 12)),
+          if (score.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text("Match Score: $score%", style: const TextStyle(color: Colors.black54, fontSize: 12)),
+            ),
+          if (url.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              url,
+              style: const TextStyle(color: Colors.blue, fontSize: 12),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
         ],
       ),
     );

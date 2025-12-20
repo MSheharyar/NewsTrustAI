@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
-import 'screens/welcome_screen.dart';
-import 'screens/home_screen.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart'; // This should be generated via flutterfire CLI
+import 'screens/login_screen.dart';
+import 'screens/home/home_screen.dart';
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized(); // Ensure binding before async calls
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
-void main() {
   runApp(const NewsVerifierApp());
 }
 
@@ -33,10 +39,10 @@ class NewsVerifierApp extends StatelessWidget {
       ),
       
       // --- NAVIGATION ROUTES ---
-      initialRoute: '/welcome',
+      initialRoute: '/login',
       routes: {
-        '/welcome': (context) => const WelcomeScreen(),
-        '/home': (context) => const HomeScreen(), 
+        '/login': (context) => const LoginScreen(),
+        '/home': (context) => const HomeScreen(firstName: "",),
       },
       
     );

@@ -21,7 +21,7 @@ class _VerifyTextScreenState extends State<VerifyTextScreen> {
     super.dispose();
   }
 
-  // ✅ Turns long pasted text into a shorter search query for better matching
+  // Turns long pasted text into a shorter search query for better matching
   String _makeQuery(String text) {
     final clean = text
         .replaceAll(RegExp(r'[\n\r]+'), ' ')
@@ -61,7 +61,7 @@ class _VerifyTextScreenState extends State<VerifyTextScreen> {
       return;
     }
 
-    // ✅ Use extracted query (better results)
+    // Use extracted query (better results)
     final query = _makeQuery(rawText);
 
     // 2) Loading on
