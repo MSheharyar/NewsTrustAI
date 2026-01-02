@@ -1,11 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import '../services/api_service.dart';
 import 'verify_link_screen.dart';
 
 class AllNewsScreen extends StatelessWidget {
   final List<dynamic> newsItems;
 
   const AllNewsScreen({super.key, required this.newsItems});
+
+  String _safeStr(dynamic v, [String fallback = ""]) {
+    if (v == null) return fallback;
+    final s = v.toString().trim();
+    return s.isEmpty ? fallback : s;
+  }
+
+  Map<String, dynamic> _asMap(dynamic item) {
+    if (item is Map<String, dynamic>) return item;
+    if (item is Map) return Map<String, dynamic>.from(item);
+    return <String, dynamic>{};
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,12 +48,16 @@ class AllNewsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildNewsCard(BuildContext context, dynamic item) {
-    final String title = (item['title'] ?? "No Title").toString();
-    final String desc = (item['summary'] ?? "No summary available.").toString();
-    final String source = (item['source'] ?? "News Source").toString();
-    final String? imageUrl = item['imageUrl']?.toString();
-    final String? url = item['url']?.toString();
+  Widget _buildNewsCard(BuildContext context, dynamic rawItem) {
+    final item = _asMap(rawItem);
+
+    final String title = _safeStr(item['title'], "No Title");
+    final String desc = _safeStr(item['summary'], "No summary available.");
+    final String source = _safeStr(item['source'], "News Source");
+    final map = (item is Map) ? Map<String,dynamic>.from(item) : <String,dynamic>{};
+    final imageUrl = ApiService.resolveNewsImageUrl(map);
+
+    final String url = _safeStr(item['url']);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -66,10 +83,17 @@ class AllNewsScreen extends StatelessWidget {
                     height: 180,
                     width: double.infinity,
                     fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) =>
-                        Container(height: 180, color: Colors.grey[200], child: const Icon(LucideIcons.image)),
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      height: 180,
+                      color: Colors.grey[200],
+                      child: const Center(child: Icon(LucideIcons.image, size: 28)),
+                    ),
                   )
-                : Container(height: 180, color: Colors.grey[200], child: const Center(child: Icon(LucideIcons.newspaper))),
+                : Container(
+                    height: 180,
+                    color: Colors.grey[200],
+                    child: const Center(child: Icon(LucideIcons.newspaper, size: 28)),
+                  ),
           ),
           Padding(
             padding: const EdgeInsets.all(16),
@@ -84,13 +108,21 @@ class AllNewsScreen extends StatelessWidget {
                   ),
                   child: Text(
                     source,
-                    style: TextStyle(color: Colors.blue[700], fontSize: 11, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      color: Colors.blue[700],
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   title,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -105,13 +137,16 @@ class AllNewsScreen extends StatelessWidget {
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
-                    onPressed: (url == null || url.isEmpty)
+                    onPressed: url.isEmpty
                         ? null
                         : () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => VerifyLinkScreen(key: ValueKey(url)),
+                                builder: (_) => VerifyLinkScreen(
+                                  initialUrl: url,
+                                  key: ValueKey(url),
+                                ),
                               ),
                             );
                           },
@@ -120,10 +155,12 @@ class AllNewsScreen extends StatelessWidget {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.blue,
                       side: BorderSide(color: Colors.blue.shade200),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
-                )
+                ),
               ],
             ),
           ),

@@ -68,9 +68,10 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
-          email: email, password: password);
-
+      await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
       // Fetch name from Firebase user
       final user = FirebaseAuth.instance.currentUser;
       final firstName = user?.displayName ?? "User";
