@@ -7,13 +7,17 @@ ResultViewModel parseResultData(Map<String, dynamic> data, {String? usedQuery}) 
 
   final String q = (data["query_used"] ?? usedQuery ?? "").toString().trim();
 
-  // ✅ NEW backend fields (safe)
   final String verificationMethod =
       (data["verification_method"] ?? "").toString().toLowerCase().trim();
   final String sourceTier =
       (data["source_tier"] ?? "").toString().toLowerCase().trim();
   final String linkDomain =
       (data["link_domain"] ?? "").toString().trim();
+
+  //paraphrase flags from backend
+  final bool isParaphrase =
+      (data["is_paraphrase_match"] == true) || (verificationMethod == "soft_db_match");
+  final String paraphraseNote = (data["paraphrase_note"] ?? "").toString();
 
   // defaults
   bool isFake = false;
@@ -28,38 +32,37 @@ ResultViewModel parseResultData(Map<String, dynamic> data, {String? usedQuery}) 
   int matchesFoundNumber = 0;
 
   bool isMainTrustedLink() {
+    // do NOT treat "sourceTier == main" as trusted LINK
     return verificationMethod == "main_trusted_link" ||
-        verificationMethod == "main_trusted_link_no_extract" ||
-        sourceTier == "main";
+        verificationMethod == "main_trusted_link_no_extract";
   }
 
+  double? _parseConf(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString());
+  }
+
+  double _defaultUnverifiedConfidence() => 55.0;
+
   // -----------------------------
-  // 1) Hybrid (your backend default)
+  // 1) Hybrid
   // -----------------------------
   if (hasHybrid) {
     final String finalLabel =
         (data["final_label"] ?? "unverified").toString().toLowerCase().trim();
 
-    double? finalConf;
-    if (data["final_confidence"] == null) {
-      finalConf = null;
-    } else if (data["final_confidence"] is num) {
-      finalConf = (data["final_confidence"] as num).toDouble();
-    } else {
-      finalConf = double.tryParse(data["final_confidence"].toString());
-    }
-    confidence = finalConf;
+    confidence = _parseConf(data["final_confidence"]);
 
-    // ✅ Special: main trusted link is always verified real in your backend
+    // Special: main trusted link
     if (isMainTrustedLink()) {
       isFake = false;
       isUnverified = false;
       mainTitle = "Likely Authentic";
       reason = (data["final_reason"] ??
-              "Verified as real because the link is from a main trusted source (ARY/DAWN/BBC/CNN).")
+              "Verified as real because the link is from a main trusted source (ARY/DAWN/BBC/CNN/ALJAZEERA).")
           .toString();
 
-      // For main trusted link, matches_found will usually be 0 -> that's fine
       matchesFoundNumber = (data["matches_found"] is num)
           ? (data["matches_found"] as num).toInt()
           : matchedSources.length;
@@ -68,30 +71,28 @@ ResultViewModel parseResultData(Map<String, dynamic> data, {String? usedQuery}) 
         type: ResultType.hybrid,
         title: mainTitle,
         reason: reason,
-        confidence: confidence,
+        confidence: confidence ?? 88,
         isFake: isFake,
         isUnverified: isUnverified,
         queryUsed: q,
         matchesFound: matchesFoundNumber,
-        verifiedSources: const ["BBC", "CNN", "DAWN", "ARY"], // for chips highlight logic in UI
+        verifiedSources: const ["BBC", "CNN", "DAWN", "ARY", "ALJAZEERA"],
         matches: const [],
         matchedSources: const [],
         verificationMethod: verificationMethod,
         sourceTier: sourceTier,
         linkDomain: linkDomain,
+        isParaphraseMatch: false,
+        paraphraseNote: "",
       );
     }
 
-    // ✅ Normal hybrid parsing (text or non-main link)
+    // Normal hybrid parsing
     if (finalLabel == "real") {
       isFake = false;
       isUnverified = false;
       mainTitle = "Likely Authentic";
-    } else if (finalLabel == "fake") {
-      isFake = true;
-      isUnverified = false;
-      mainTitle = "Suspicious Content";
-    } else if (finalLabel == "likely_fake") {
+    } else if (finalLabel == "fake" || finalLabel == "likely_fake") {
       isFake = true;
       isUnverified = false;
       mainTitle = "Suspicious Content";
@@ -101,32 +102,30 @@ ResultViewModel parseResultData(Map<String, dynamic> data, {String? usedQuery}) 
       mainTitle = "Unverified (Insufficient Evidence)";
     }
 
-    // If backend explicitly says not verified/unverified, lock it
     final String verdictState = (data["verdict_state"] ?? "").toString().toLowerCase();
     if (verdictState == "not_verified" || verdictState.contains("not_verified")) {
       isUnverified = true;
       isFake = false;
       mainTitle = "Unverified (Insufficient Evidence)";
-      // keep confidence if backend returns capped confidence; don't force null
-      // (your backend caps confidence to <= 60 even when unverified)
     }
 
     reason = (data["final_reason"] ?? "Hybrid analysis completed.").toString();
 
-    // Hybrid results typically use matched_sources
     matchesFoundNumber = (data["matches_found"] is num)
         ? (data["matches_found"] as num).toInt()
         : matchedSources.length;
 
-    // Support sources shown in matched_sources (already pre-parsed by backend)
     verifiedSources = matchedSources
         .map((m) => (m is Map ? (m["source"] ?? "").toString() : ""))
         .where((s) => s.trim().isNotEmpty)
         .toSet()
         .toList();
 
-    // Some older flows still send top_matches (safe fallback)
     matches = (data["top_matches"] is List) ? (data["top_matches"] as List) : [];
+
+    if (isUnverified && (confidence == null || confidence == 0)) {
+      confidence = _defaultUnverifiedConfidence();
+    }
 
     return ResultViewModel(
       type: ResultType.hybrid,
@@ -143,11 +142,13 @@ ResultViewModel parseResultData(Map<String, dynamic> data, {String? usedQuery}) 
       verificationMethod: verificationMethod,
       sourceTier: sourceTier,
       linkDomain: linkDomain,
+      isParaphraseMatch: isParaphrase,
+      paraphraseNote: paraphraseNote,
     );
   }
 
   // -----------------------------
-  // 2) Verify endpoint (old format)
+  // 2) Verify endpoint
   // -----------------------------
   if (isVerifyFormat) {
     final bool verified = data["verified"] == true;
@@ -158,13 +159,12 @@ ResultViewModel parseResultData(Map<String, dynamic> data, {String? usedQuery}) 
     matchesFoundNumber = count;
 
     if (verified && matches.isNotEmpty && matches[0] is Map && matches[0]["score"] != null) {
-      confidence = (matches[0]["score"] is num)
-          ? (matches[0]["score"] as num).toDouble()
-          : double.tryParse(matches[0]["score"].toString());
+      confidence = _parseConf(matches[0]["score"]);
     } else if (verified) {
       confidence = 70;
     } else {
-      confidence = null;
+      //soft confidence even if not verified
+      confidence = _defaultUnverifiedConfidence();
     }
 
     if (verified) {
@@ -212,12 +212,7 @@ ResultViewModel parseResultData(Map<String, dynamic> data, {String? usedQuery}) 
   // -----------------------------
   if (isBertFormat) {
     final String label = (data["label"] ?? "").toString().toLowerCase().trim();
-
-    final double? conf = (data["confidence"] is num)
-        ? (data["confidence"] as num).toDouble()
-        : double.tryParse(data["confidence"]?.toString() ?? "");
-
-    confidence = conf ?? 0;
+    confidence = _parseConf(data["confidence"]) ?? 0;
 
     if (label.contains("real") || label.contains("true")) {
       isFake = false;
@@ -234,6 +229,7 @@ ResultViewModel parseResultData(Map<String, dynamic> data, {String? usedQuery}) 
       isUnverified = true;
       mainTitle = "Unverified (Insufficient Evidence)";
       reason = "Model output was unclear. Please verify using trusted sources.";
+      if (confidence == null || confidence == 0) confidence = _defaultUnverifiedConfidence();
     }
 
     return ResultViewModel(
@@ -261,7 +257,7 @@ ResultViewModel parseResultData(Map<String, dynamic> data, {String? usedQuery}) 
     type: ResultType.unknown,
     title: "Unknown",
     reason: "Analysis completed.",
-    confidence: null,
+    confidence: _defaultUnverifiedConfidence(),
     isFake: false,
     isUnverified: true,
     queryUsed: "",

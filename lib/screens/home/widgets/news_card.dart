@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../../../services/api_service.dart';
 import '../../verify_link_screen.dart';
 
 class NewsCard extends StatelessWidget {
   final dynamic item;
   const NewsCard({super.key, required this.item});
-  static const String kImageProxyBase = "http://3.144.87.221:8000";
 
   String stripHtml(String html) {
     return html
@@ -15,33 +15,23 @@ class NewsCard extends StatelessWidget {
         .trim();
   }
 
-  String? buildSafeImageUrl(String? raw) {
-    if (raw == null) return null;
-    final u = raw.trim();
-    if (u.isEmpty) return null;
-
-    final parsed = Uri.tryParse(u);
-    if (parsed == null || (!parsed.isScheme("http") && !parsed.isScheme("https"))) {
-      return null;
-    }
-
-    final encoded = Uri.encodeComponent(u);
-    return "$kImageProxyBase/img?url=$encoded";
+  Map<String, dynamic> _asMap(dynamic v) {
+    if (v is Map<String, dynamic>) return v;
+    if (v is Map) return Map<String, dynamic>.from(v);
+    return <String, dynamic>{};
   }
 
   @override
   Widget build(BuildContext context) {
-    final String title = (item['title'] ?? 'No Title').toString();
-    final String descRaw = (item['summary'] ?? 'No summary available').toString();
+    final map = _asMap(item);
+
+    final String title = (map['title'] ?? 'No Title').toString();
+    final String descRaw = (map['summary'] ?? 'No summary available').toString();
     final String desc = stripHtml(descRaw);
-    final String source = (item['source'] ?? 'News').toString();
+    final String source = (map['source'] ?? 'News').toString();
 
-    final String? rawImageUrl = item['imageUrl']?.toString();
-    final String? url = item['url']?.toString();
-
-    print("NewsCard imageUrl => $rawImageUrl");
-
-    final String? imageUrl = buildSafeImageUrl(rawImageUrl);
+    final String? url = map['url']?.toString();
+    final String? imageUrl = ApiService.resolveNewsImageUrl(map);
 
     return Container(
       margin: const EdgeInsets.only(right: 15, bottom: 10),
@@ -63,7 +53,7 @@ class NewsCard extends StatelessWidget {
             SizedBox(
               height: 150,
               width: double.infinity,
-              child: (imageUrl != null)
+              child: (imageUrl != null && imageUrl.isNotEmpty)
                   ? Image.network(
                       imageUrl,
                       fit: BoxFit.cover,
@@ -71,7 +61,9 @@ class NewsCard extends StatelessWidget {
                         if (progress == null) return child;
                         return Container(
                           color: Colors.grey[200],
-                          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                          child: const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
                         );
                       },
                       errorBuilder: (_, __, ___) => Container(
@@ -94,7 +86,11 @@ class NewsCard extends StatelessWidget {
                       title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, height: 1.2),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        height: 1.2,
+                      ),
                     ),
                     const SizedBox(height: 6),
                     Expanded(
@@ -102,7 +98,11 @@ class NewsCard extends StatelessWidget {
                         desc,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.black54, fontSize: 12, height: 1.2),
+                        style: const TextStyle(
+                          color: Colors.black54,
+                          fontSize: 12,
+                          height: 1.2,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -130,7 +130,7 @@ class NewsCard extends StatelessWidget {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) => VerifyLinkScreen(key: ValueKey(url)),
+                                      builder: (_) => VerifyLinkScreen(initialUrl: url),
                                     ),
                                   );
                                 },
@@ -140,7 +140,9 @@ class NewsCard extends StatelessWidget {
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                             foregroundColor: Colors.blue,
                             side: BorderSide(color: Colors.blue.shade200),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
                         ),
                       ],

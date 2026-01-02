@@ -2,66 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'result_parser.dart';
 import 'result_view_model.dart';
-import 'widgets/matched_source_card.dart';
-import 'widgets/match_tile.dart';
-import 'widgets/source_chip.dart';
 import 'widgets/verdict_card.dart';
+import 'widgets/explanation_card.dart';
+import 'widgets/sources_section.dart';
+import 'widgets/verify_another_button.dart';
 
 class ResultScreen extends StatelessWidget {
   final Map<String, dynamic> data;
   final String? originalText;
   final String? usedQuery;
 
+  final String resultMode;
+
   const ResultScreen({
     super.key,
     required this.data,
     this.originalText,
     this.usedQuery,
+    this.resultMode = "text",
   });
-
-  String _safeStr(dynamic v, [String fallback = ""]) {
-    if (v == null) return fallback;
-    return v.toString();
-  }
 
   @override
   Widget build(BuildContext context) {
     final ResultViewModel vm = parseResultData(data, usedQuery: usedQuery);
-
-    // ---- NEW: detect "main trusted link" results from backend ----
-    final bool isMainTrustedLink = vm.isMainTrustedLink;
-    final bool showEvidenceSection = !vm.isMainTrustedLink;
-
-    // For the chips row:
-    // - if main trusted link, highlight the domain source only (ARY/DAWN/BBC/CNN)
-    // - else keep your existing vm.verifiedSources logic
-    List<Widget> sourceChips() {
-      if (!isMainTrustedLink) {
-        return (vm.verifiedSources.isNotEmpty)
-            ? vm.verifiedSources.map((s) => SourceChip(label: s, isMatch: true)).toList()
-            : const [
-                SourceChip(label: "BBC", isMatch: false),
-                SourceChip(label: "CNN", isMatch: false),
-                SourceChip(label: "DAWN", isMatch: false),
-                SourceChip(label: "ARY", isMatch: false),
-              ];
-      }
-
-      // Main trusted link: attempt to detect which one from link_domain
-      final domain = vm.linkDomain.toLowerCase();
-
-      bool isBBC = domain.contains("bbc");
-      bool isCNN = domain.contains("cnn");
-      bool isDAWN = domain.contains("dawn");
-      bool isARY = domain.contains("ary");
-
-      return [
-        SourceChip(label: "BBC", isMatch: isBBC),
-        SourceChip(label: "CNN", isMatch: isCNN),
-        SourceChip(label: "DAWN", isMatch: isDAWN),
-        SourceChip(label: "ARY", isMatch: isARY),
-      ];
-    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
@@ -84,66 +47,12 @@ class ResultScreen extends StatelessWidget {
           children: [
             const SizedBox(height: 10),
 
-            // Verdict card already shows confidence etc.
             VerdictCard(vm: vm),
 
             const SizedBox(height: 24),
 
-            // Explanation Card
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10)],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(LucideIcons.info, size: 20, color: Colors.blue[600]),
-                      const SizedBox(width: 10),
-                      const Text(
-                        "Why this result?",
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    vm.reason,
-                    style: const TextStyle(fontSize: 15, height: 1.5, color: Colors.black54),
-                  ),
-
-                  // NEW: show link source info for main trusted link (so user sees the proof)
-                  if (isMainTrustedLink) ...[
-                    const SizedBox(height: 12),
-                    const Divider(),
-                    const SizedBox(height: 8),
-                    const Text(
-                      "Verified from:",
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      vm.linkDomain.isNotEmpty ? vm.linkDomain : "Main trusted source",
-                      style: const TextStyle(color: Colors.black87),
-                    ),
-                  ],
-
-                  if (vm.queryUsed.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    const Divider(),
-                    const SizedBox(height: 8),
-                    const Text("Query used:", style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 6),
-                    Text(vm.queryUsed, style: const TextStyle(color: Colors.black87)),
-                  ],
-                ],
-              ),
-            ),
+            // explanation widget
+            ExplanationCard(vm: vm),
 
             const SizedBox(height: 24),
 
@@ -156,70 +65,12 @@ class ResultScreen extends StatelessWidget {
               const SizedBox(height: 12),
             ],
 
-            // ✅ NEW: Always show the 4 chips row (good UX), but only show DB evidence block when relevant
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                "Checked against:",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: sourceChips(),
-            ),
-
-            // ✅ Only show “matches found / trusted database” part if NOT main trusted link
-            if (showEvidenceSection) ...[
-              const SizedBox(height: 18),
-
-              if (vm.type == ResultType.hybrid || vm.type == ResultType.verify) ...[
-                if (vm.matchedSources.isNotEmpty) ...[
-                  ...vm.matchedSources.take(3).map((s) => MatchedSourceCard(source: s)).toList(),
-                  const SizedBox(height: 12),
-                ] else ...[
-                  const SizedBox(height: 5),
-                  const Text(
-                    "No matches found in our trusted database.",
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-
-                if (vm.matches.isNotEmpty) ...[
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      "Top Matches:",
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  ...vm.matches.take(3).map((m) => MatchTile(match: m)).toList(),
-                ],
-              ],
-            ],
+            // sources + evidence widget
+            SourcesSection(vm: vm),
 
             const SizedBox(height: 30),
 
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue[600],
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  elevation: 4,
-                ),
-                child: const Text(
-                  "Verify Another",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                ),
-              ),
-            ),
+            const VerifyAnotherButton(),
           ],
         ),
       ),

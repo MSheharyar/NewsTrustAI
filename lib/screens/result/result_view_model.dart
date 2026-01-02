@@ -19,10 +19,14 @@ class ResultViewModel {
   final List<dynamic> matches;
   final List<dynamic> matchedSources;
 
-  // ✅ NEW (from backend main.py)
-  final String verificationMethod; // e.g. main_trusted_link, db_match, no_evidence
+  // backend fields
+  final String verificationMethod; // e.g. main_trusted_link, db_match, soft_db_match
   final String sourceTier; // main / other
   final String linkDomain; // arynews.tv, dawn.com, etc.
+
+  // ✅ NEW: paraphrase UI support
+  final bool isParaphraseMatch;
+  final String paraphraseNote;
 
   const ResultViewModel({
     required this.type,
@@ -36,22 +40,29 @@ class ResultViewModel {
     required this.verifiedSources,
     required this.matches,
     required this.matchedSources,
-
-    // ✅ NEW (defaults handled in parser)
     required this.verificationMethod,
     required this.sourceTier,
     required this.linkDomain,
+
+    // ✅ keep optional defaults so nothing breaks
+    this.isParaphraseMatch = false,
+    this.paraphraseNote = "",
   });
 
-  // ✅ Used by VerdictCard + ResultScreen
-  bool get isMainTrustedLink =>
-      verificationMethod == "main_trusted_link" ||
-      verificationMethod == "main_trusted_link_no_extract" ||
-      sourceTier == "main";
+  // ✅ ONLY true for link trusted shortcut
+  bool get isMainTrustedLink {
+    final m = verificationMethod.toLowerCase().trim();
+    return m == "main_trusted_link" || m == "main_trusted_link_no_extract";
+  }
 
-  Color get themeColor => isUnverified
-      ? Colors.orange
-      : (isFake ? Colors.red : Colors.green);
+  // ✅ show paraphrase badge when backend says so OR method is soft_db_match
+  bool get showParaphraseBadge {
+    final m = verificationMethod.toLowerCase().trim();
+    return isParaphraseMatch || m == "soft_db_match";
+  }
+
+  Color get themeColor =>
+      isUnverified ? Colors.orange : (isFake ? Colors.red : Colors.green);
 
   Color get bgColor => isUnverified
       ? Colors.orange.shade50
