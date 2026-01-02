@@ -11,11 +11,17 @@ class MatchedSourceCard extends StatelessWidget {
 
     final String name = (s["source"] ?? "Unknown").toString();
     final String url = (s["url"] ?? "").toString();
+
     final String publishedAt = (s["publishedAt"] ?? "").toString();
     final String scrapedAt = (s["scrapedAt"] ?? "").toString();
     final String time = publishedAt.isNotEmpty ? publishedAt : scrapedAt;
-    final String score = (s["score"] ?? "").toString();
+
     final bool trusted = (s["trusted"] == true);
+
+    // ✅ safer score parsing + cleaner display
+    final double? score = (s["score"] is num)
+        ? (s["score"] as num).toDouble()
+        : double.tryParse((s["score"] ?? "").toString());
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -48,17 +54,25 @@ class MatchedSourceCard extends StatelessWidget {
                   ),
                   child: Text(
                     "Trusted",
-                    style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.w700, fontSize: 12),
+                    style: TextStyle(
+                      color: Colors.green[800],
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
             ],
           ),
           const SizedBox(height: 8),
-          if (time.isNotEmpty) Text("Time: $time", style: const TextStyle(color: Colors.black54, fontSize: 12)),
-          if (score.isNotEmpty)
+          if (time.isNotEmpty)
+            Text("Time: $time", style: const TextStyle(color: Colors.black54, fontSize: 12)),
+          if (score != null)
             Padding(
               padding: const EdgeInsets.only(top: 4),
-              child: Text("Match Score: $score%", style: const TextStyle(color: Colors.black54, fontSize: 12)),
+              child: Text(
+                "Match Score: ${score.toStringAsFixed(0)}%",
+                style: const TextStyle(color: Colors.black54, fontSize: 12),
+              ),
             ),
           if (url.isNotEmpty) ...[
             const SizedBox(height: 6),

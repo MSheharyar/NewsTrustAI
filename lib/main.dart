@@ -41,6 +41,7 @@ class NewsVerifierApp extends StatelessWidget {
       // --- NAVIGATION ROUTES ---
       initialRoute: '/login',
       routes: {
+        
         '/login': (context) => const LoginScreen(),
         '/home': (context) => const HomeScreen(firstName: "",),
       },

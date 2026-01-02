@@ -6,9 +6,11 @@ class MatchTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final int score = (match is Map && match["score"] != null)
-        ? (match["score"] is int ? match["score"] : int.tryParse(match["score"].toString()) ?? 0)
-        : 0;
+    final double score = (match is Map && match["score"] != null)
+        ? ((match["score"] is num)
+            ? (match["score"] as num).toDouble()
+            : double.tryParse(match["score"].toString()) ?? 0.0)
+        : 0.0;
 
     final Map<String, dynamic> article =
         (match is Map && match["article"] is Map) ? Map<String, dynamic>.from(match["article"]) : {};
@@ -34,7 +36,7 @@ class MatchTile extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
-              "$score%",
+              "${score.toStringAsFixed(0)}%",
               style: TextStyle(color: Colors.blue[700], fontWeight: FontWeight.bold),
             ),
           ),

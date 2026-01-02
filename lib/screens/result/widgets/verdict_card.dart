@@ -32,13 +32,23 @@ class VerdictCard extends StatelessWidget {
           const SizedBox(height: 20),
           Text(
             vm.title,
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: vm.themeColor),
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: vm.themeColor,
+            ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 6),
           Text(
-            "${vm.confidence.toStringAsFixed(0)}% Confidence",
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+            vm.confidence == null
+                ? "N/A (Not Verified)"
+                : "${vm.confidence!.toStringAsFixed(0)}% Confidence",
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
           ),
           const SizedBox(height: 8),
           _buildSubtitle(),
@@ -48,6 +58,17 @@ class VerdictCard extends StatelessWidget {
   }
 
   Widget _buildSubtitle() {
+    // ✅ MAIN trusted link verification
+    if (vm.isMainTrustedLink) {
+      final domain = vm.linkDomain.trim();
+      return Text(
+        domain.isEmpty ? "Verified from main trusted source" : "Verified from: $domain",
+        style: const TextStyle(color: Colors.black54),
+        textAlign: TextAlign.center,
+      );
+    }
+
+    // ✅ Normal verify/hybrid results show matches count
     if (vm.type == ResultType.hybrid || vm.type == ResultType.verify) {
       return Text(
         "Matches found: ${vm.matchesFound}",
