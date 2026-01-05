@@ -1,7 +1,13 @@
 import 'dart:io';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+
+import '../../services/api_service.dart';
+import './result/result_screen.dart';
 
 class UploadImageScreen extends StatefulWidget {
   const UploadImageScreen({super.key});
@@ -13,86 +19,165 @@ class UploadImageScreen extends StatefulWidget {
 class _UploadImageScreenState extends State<UploadImageScreen> {
   File? _selectedImage;
   bool _isScanning = false;
+
   final TextEditingController _extractedTextController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
-  
-  // Track if we have successfully extracted text to change the UI layout
+
   bool _hasExtracted = false;
 
+  // ✅ OCR data
+  List<Rect> _boundingBoxes = [];
+  double _ocrConfidence = 0.0; // 0–100
+
   Future<void> _pickImage(ImageSource source) async {
-    Navigator.pop(context); // Close the bottom sheet
-    try {
-      final XFile? image = await _picker.pickImage(source: source);
-      if (image != null) {
-        setState(() {
-          _selectedImage = File(image.path);
-          _hasExtracted = false; // Reset previous extraction
-          _extractedTextController.clear();
-        });
-        // Auto-start scanning (Optional UX choice)
-        _scanImage();
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Failed to pick image")),
-      );
-    }
+    Navigator.pop(context);
+    final XFile? image = await _picker.pickImage(source: source);
+    if (image == null) return;
+
+    setState(() {
+      _selectedImage = File(image.path);
+      _hasExtracted = false;
+      _boundingBoxes.clear();
+      _ocrConfidence = 0.0;
+      _extractedTextController.clear();
+    });
+
+    _scanImage();
   }
 
-  void _scanImage() async {
+  // ==========================
+  // REAL OCR WITH BOXES + CONFIDENCE
+  // ==========================
+  Future<void> _scanImage() async {
     if (_selectedImage == null) return;
 
     setState(() => _isScanning = true);
 
-    // --- SIMULATE OCR / API CALL ---
-    // In real app: await ApiService.extractTextFromImage(_selectedImage!);
-    await Future.delayed(const Duration(seconds: 2)); 
+    try {
+      final inputImage = InputImage.fromFile(_selectedImage!);
+      final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
 
-    // Fake result for demo
-    String fakeResult = "Breaking News: Scientists have discovered a new species of flying penguins in the Antarctic region. This discovery challenges all known biology laws.";
+      final RecognizedText recognizedText =
+          await recognizer.processImage(inputImage);
 
-    if (!mounted) return;
+      await recognizer.close();
 
-    setState(() {
-      _isScanning = false;
-      _hasExtracted = true;
-      _extractedTextController.text = fakeResult;
-    });
+      final List<Rect> boxes = [];
+      final StringBuffer buffer = StringBuffer();
+
+      int totalBlocks = 0;
+      int confidentBlocks = 0;
+
+      for (final block in recognizedText.blocks) {
+        if (block.boundingBox != null) {
+          boxes.add(block.boundingBox);
+        }
+
+        buffer.writeln(block.text);
+        totalBlocks++;
+
+        // ML Kit doesn't give confidence directly → estimate via length
+        if (block.text.trim().length > 15) {
+          confidentBlocks++;
+        }
+      }
+
+      final confidence =
+          totalBlocks == 0 ? 0.0 : (confidentBlocks / totalBlocks) * 100;
+
+      if (!mounted) return;
+
+      setState(() {
+        _boundingBoxes = boxes;
+        _ocrConfidence = confidence.clamp(0, 100);
+        _extractedTextController.text =
+            buffer.toString().trim().isEmpty
+                ? "No readable text found."
+                : buffer.toString().trim();
+        _hasExtracted = true;
+        _isScanning = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isScanning = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("OCR failed")),
+      );
+    }
   }
 
-  void _verifyExtractedText() async {
-    // Navigate to verification or call API directly
-    // For now, let's just show a success message or navigate to result
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Sending text to Fake News Detector...")),
-    );
-    
-    // You can also reuse the logic from VerifyTextScreen here!
-    // ApiService.verifyText(_extractedTextController.text)...
+  // ==========================
+  // VERIFY OCR TEXT
+  // ==========================
+  Future<void> _verifyExtractedText() async {
+    final text = _extractedTextController.text.trim();
+
+    if (text.length < 20) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Text too short to verify")),
+      );
+      return;
+    }
+
+    setState(() => _isScanning = true);
+
+    try {
+      final result = await ApiService.verifyText(text);
+
+      if (!mounted) return;
+
+      // 🔥 Attach OCR metadata into rawResult
+      result["ocr_meta"] = {
+        "confidence": _ocrConfidence,
+        "imagePath": _selectedImage?.path ?? "",
+        "blocks": _boundingBoxes.length,
+      };
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ResultScreen(
+            data: result,
+            originalText: text,
+            usedQuery: text,
+            resultMode: "image",
+          ),
+        ),
+      );
+    } catch (_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Verification failed")),
+      );
+    } finally {
+      if (mounted) setState(() => _isScanning = false);
+    }
   }
 
+  // ==========================
+  // IMAGE SOURCE SHEET
+  // ==========================
   void _showImageSourceSheet() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Padding(
+      builder: (_) => Padding(
         padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            const Text("Select Image Source", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _sourceOption(LucideIcons.camera, "Camera", () => _pickImage(ImageSource.camera)),
-                _sourceOption(LucideIcons.image, "Gallery", () => _pickImage(ImageSource.gallery)),
-              ],
+            _sourceOption(
+              LucideIcons.camera,
+              "Camera",
+              () => _pickImage(ImageSource.camera),
             ),
-            const SizedBox(height: 10),
+            _sourceOption(
+              LucideIcons.image,
+              "Gallery",
+              () => _pickImage(ImageSource.gallery),
+            ),
           ],
         ),
       ),
@@ -104,75 +189,60 @@ class _UploadImageScreenState extends State<UploadImageScreen> {
       onTap: onTap,
       child: Column(
         children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: Colors.blue[50], shape: BoxShape.circle),
-            child: Icon(icon, size: 30, color: Colors.blue[700]),
+          CircleAvatar(
+            radius: 30,
+            backgroundColor: Colors.blue[50],
+            child: Icon(icon, color: Colors.blue[700], size: 28),
           ),
           const SizedBox(height: 8),
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
+          Text(label),
         ],
       ),
     );
   }
 
+  // ==========================
+  // UI
+  // ==========================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
       appBar: AppBar(
+        title: const Text("Scan Image", style: TextStyle(fontWeight: FontWeight.bold)),
+        centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(LucideIcons.arrowLeft, color: Colors.black87),
+          icon: const Icon(LucideIcons.arrowLeft),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text("Scan Image", style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
-        centerTitle: true,
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 1. Image Preview Area
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                width: double.infinity,
-                height: _selectedImage == null ? 200 : 300,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // IMAGE + BOXES
+            GestureDetector(
+              onTap: _selectedImage == null ? _showImageSourceSheet : null,
+              child: Container(
+                height: 300,
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
-                  border: _selectedImage == null 
-                      ? Border.all(color: Colors.grey.shade300, width: 2) // Solid border for clean look
-                      : null,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 15,
-                      offset: const Offset(0, 5),
-                    ),
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black12, blurRadius: 8)
                   ],
                 ),
                 child: _selectedImage == null
-                    ? InkWell(
-                        onTap: _showImageSourceSheet,
-                        borderRadius: BorderRadius.circular(20),
+                    ? Center(
                         child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(LucideIcons.uploadCloud, size: 48, color: Colors.blue[300]),
-                            const SizedBox(height: 16),
-                            Text(
-                              "Tap to Upload Image",
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey[600]),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              "Supports JPG, PNG",
-                              style: TextStyle(fontSize: 12, color: Colors.grey[400]),
-                            ),
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(LucideIcons.uploadCloud, size: 48),
+                            SizedBox(height: 10),
+                            Text("Tap to upload image"),
                           ],
                         ),
                       )
@@ -187,7 +257,22 @@ class _UploadImageScreenState extends State<UploadImageScreen> {
                               fit: BoxFit.cover,
                             ),
                           ),
-                          // Overlay for Scanning Loading State
+
+                          // BOUNDING BOXES
+                          ..._boundingBoxes.map(
+                            (r) => Positioned(
+                              left: r.left,
+                              top: r.top,
+                              width: max(1, r.width),
+                              height: max(1, r.height),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: Colors.orange, width: 2),
+                                ),
+                              ),
+                            ),
+                          ),
+
                           if (_isScanning)
                             Container(
                               decoration: BoxDecoration(
@@ -195,94 +280,51 @@ class _UploadImageScreenState extends State<UploadImageScreen> {
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: const Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    CircularProgressIndicator(color: Colors.white),
-                                    SizedBox(height: 16),
-                                    Text("Extracting Text...", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
-                                  ],
-                                ),
-                              ),
-                            ),
-                          // Close button to remove image
-                          if (!_isScanning)
-                            Positioned(
-                              top: 10,
-                              right: 10,
-                              child: InkWell(
-                                onTap: () => setState(() {
-                                  _selectedImage = null;
-                                  _hasExtracted = false;
-                                  _extractedTextController.clear();
-                                }),
-                                child: Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: const BoxDecoration(
-                                    color: Colors.white,
-                                    shape: BoxShape.circle,
-                                    boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
-                                  ),
-                                  child: const Icon(LucideIcons.x, size: 20, color: Colors.black),
-                                ),
+                                child: CircularProgressIndicator(color: Colors.white),
                               ),
                             ),
                         ],
                       ),
               ),
+            ),
 
-              const SizedBox(height: 25),
+            const SizedBox(height: 20),
 
-              // 2. Extracted Text Area (Only show if extraction is done)
-              if (_hasExtracted) ...[
-                const Text(
-                  "Review Extracted Text",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            if (_hasExtracted) ...[
+              Text(
+                "OCR Confidence: ${_ocrConfidence.toStringAsFixed(0)}%",
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 10),
+
+              TextField(
+                controller: _extractedTextController,
+                maxLines: 6,
+                decoration: const InputDecoration(
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(borderSide: BorderSide.none),
                 ),
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10),
-                    ],
-                  ),
-                  child: TextField(
-                    controller: _extractedTextController,
-                    maxLines: 6,
-                    style: const TextStyle(fontSize: 15, height: 1.5),
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.all(16),
-                      hintText: "No text found...",
+              ),
+              const SizedBox(height: 20),
+
+              SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: ElevatedButton.icon(
+                  onPressed: _verifyExtractedText,
+                  icon: const Icon(LucideIcons.shieldCheck),
+                  label: const Text("Verify Extracted Text"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange[600],
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
                     ),
                   ),
                 ),
-                const SizedBox(height: 25),
-                
-                // Verify Button
-                SizedBox(
-                  width: double.infinity,
-                  height: 55,
-                  child: ElevatedButton.icon(
-                    onPressed: _verifyExtractedText,
-                    icon: const Icon(LucideIcons.shieldCheck, color: Colors.white),
-                    label: const Text(
-                      "Verify This Text",
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange[600], // Orange to differentiate image action
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      elevation: 2,
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ],
-          ),
+          ],
         ),
       ),
     );

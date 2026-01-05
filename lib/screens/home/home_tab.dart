@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:newstrustai/screens/login_screen.dart';
+
 import '../../services/api_service.dart';
+import '../login_screen.dart';
 import '../verify_text_screen.dart';
 import '../verify_link_screen.dart';
 import '../upload_image_screen.dart';
 import '../allnews_screen.dart';
+
 import 'widgets/stats_card.dart';
 import 'widgets/quick_action_tile.dart';
 import 'widgets/news_card.dart';
@@ -37,7 +39,6 @@ class _HomeTabState extends State<HomeTab> {
 
     try {
       final items = await ApiService.fetchTrending();
-
       if (!mounted) return;
       setState(() {
         _newsArticles = items;
@@ -47,7 +48,7 @@ class _HomeTabState extends State<HomeTab> {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _error = "Failed to load trending news: $e";
+        _error = "Failed to load trending news.";
       });
     }
   }
@@ -83,7 +84,10 @@ class _HomeTabState extends State<HomeTab> {
                 subtitle: "Paste text to analyze",
                 color: Colors.blue[50]!,
                 iconColor: Colors.blue[600]!,
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VerifyTextScreen())),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const VerifyTextScreen()),
+                ),
               ),
               const SizedBox(height: 12),
 
@@ -93,7 +97,10 @@ class _HomeTabState extends State<HomeTab> {
                 subtitle: "Paste URL to check source",
                 color: Colors.purple[50]!,
                 iconColor: Colors.purple[600]!,
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VerifyLinkScreen())),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const VerifyLinkScreen()),
+                ),
               ),
               const SizedBox(height: 12),
 
@@ -103,7 +110,10 @@ class _HomeTabState extends State<HomeTab> {
                 subtitle: "Extract text from screenshot",
                 color: Colors.orange[50]!,
                 iconColor: Colors.orange[600]!,
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UploadImageScreen())),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const UploadImageScreen()),
+                ),
               ),
 
               const SizedBox(height: 30),
@@ -189,7 +199,10 @@ class _HomeTabState extends State<HomeTab> {
           ],
         ),
         IconButton(
-          onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+          onPressed: () => Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+          ),
           icon: const Icon(LucideIcons.logOut, color: Colors.black54),
         )
       ],

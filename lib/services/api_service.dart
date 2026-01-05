@@ -2,157 +2,124 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String _ec2Ip = "3.107.16.132";
+  static const String _ec2Ip = "13.239.65.21";
   static const int _port = 8000;
-
   static String get _base => "http://$_ec2Ip:$_port";
 
-  // ----------------------------
-  // VERIFY (OLD) - POST /verify
-  // ----------------------------
-  static Future<Map<String, dynamic>> verifyNews(String text) async {
+  static Future<Map<String, dynamic>> _postJson(
+    String path,
+    Map<String, dynamic> payload,
+  ) async {
     try {
-      final url = Uri.parse("$_base/verify");
-      final response = await http
-          .post(
-            url,
-            headers: {"Content-Type": "application/json"},
-            body: jsonEncode({"query": text}),
-          )
-          .timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      }
-
-      return {
-        "error": true,
-        "message": "Server Error: ${response.statusCode}",
-        "body": response.body
-      };
-    } catch (e) {
-      return {"error": true, "message": "Connection Failed: $e"};
-    }
-  }
-
-  // ----------------------------
-  // VERIFY LINK - POST /analyze-link
-  // ----------------------------
-  static Future<Map<String, dynamic>> analyzeLink(String url) async {
-    try {
-      final cleanUrl = url.trim();
-      final endpoint = Uri.parse("$_base/analyze-link");
       final res = await http
           .post(
-            endpoint,
+            Uri.parse("$_base$path"),
             headers: {"Content-Type": "application/json"},
-            body: jsonEncode({"url": cleanUrl}),
+            body: jsonEncode(payload),
           )
-          .timeout(const Duration(seconds: 20));
-
-      if (res.statusCode == 200) return jsonDecode(res.body);
-
-      return {
-        "error": true,
-        "message": "Server Error: ${res.statusCode}",
-        "body": res.body
-      };
-    } catch (e) {
-      return {"error": true, "message": "Connection Failed: $e"};
-    }
-  }
-
-  // ----------------------------
-  // BERT ONLY - POST /predict-text
-  // ----------------------------
-  static Future<Map<String, dynamic>> predictText(String text) async {
-    try {
-      final url = Uri.parse("$_base/predict-text");
-      final res = await http
-          .post(
-            url,
-            headers: {"Content-Type": "application/json"},
-            body: jsonEncode({"text": text}),
-          )
-          .timeout(const Duration(seconds: 20));
-
-      if (res.statusCode == 200) return jsonDecode(res.body);
-
-      return {
-        "error": true,
-        "message": "Server Error: ${res.statusCode}",
-        "body": res.body
-      };
-    } catch (e) {
-      return {"error": true, "message": "Connection Failed: $e"};
-    }
-  }
-
-  // ----------------------------
-  // HYBRID - POST /analyze-text
-  // ----------------------------
-  static Future<Map<String, dynamic>> analyzeText(String text) async {
-    try {
-      final url = Uri.parse("$_base/analyze-text");
-      final res = await http
-          .post(
-            url,
-            headers: {"Content-Type": "application/json"},
-            body: jsonEncode({"text": text}),
-          )
-          .timeout(const Duration(seconds: 20));
-
-      if (res.statusCode == 200) return jsonDecode(res.body);
-
-      return {
-        "error": true,
-        "message": "Server Error: ${res.statusCode}",
-        "body": res.body
-      };
-    } catch (e) {
-      return {"error": true, "message": "Connection Failed: $e"};
-    }
-  }
-
-  // ----------------------------
-  // TRENDING - GET /trending
-  // force=true ensures you don't see 2-days old cached data
-  // ----------------------------
-  static Future<List<dynamic>> fetchTrending({bool force = false, int limit = 30}) async {
-    try {
-      final url = Uri.parse("$_base/trending?limit=$limit${force ? "&force=1" : ""}");
-      final res = await http.get(url).timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 25));
 
       if (res.statusCode == 200) {
         final decoded = jsonDecode(res.body);
-        return (decoded["items"] as List<dynamic>);
+        if (decoded is Map<String, dynamic>) return decoded;
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+        return {"error": true, "message": "Invalid server response format"};
       }
-      return [];
-    } catch (_) {
-      return [];
+
+      return {"error": true, "message": "Server error ${res.statusCode}"};
+    } catch (e) {
+      return {"error": true, "message": e.toString()};
     }
   }
 
-  // ----------------------------
-  // QUICK EXAMPLES - Top 5 trending
-  // (Use this for Verify Text screen "Quick Examples")
-  // ----------------------------
-  static Future<List<dynamic>> fetchQuickExamples() async {
-    // simplest: reuse trending, force refresh optional
-    return fetchTrending(force: false, limit: 5);
+  static Future<List<dynamic>> _getList(String path) async {
+    try {
+      final res = await http
+          .get(Uri.parse("$_base$path"))
+          .timeout(const Duration(seconds: 25));
+
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(res.body);
+
+        if (decoded is List) return decoded;
+
+        if (decoded is Map && decoded["items"] is List) {
+          return decoded["items"] as List;
+        }
+      }
+    } catch (_) {}
+    return [];
   }
 
-  // ----------------------------
-  // IMAGE FIX: for .webp links returned by backend as imageFixedUrl
-  // If item has imageFixedUrl => return full URL
-  // else return normal imageUrl
-  // ----------------------------
-  static String? resolveNewsImageUrl(Map<String, dynamic> item) {
-    final fixed = (item["imageFixedUrl"] ?? "").toString().trim();
-    if (fixed.isNotEmpty) return "$_base$fixed";
+  // ✅ UPDATED: supports query
+  static Future<Map<String, dynamic>> verifyText(
+    String text, {
+    String? query,
+  }) {
+    final payload = <String, dynamic>{
+      "text": text,
+      if (query != null && query.trim().isNotEmpty) "query": query.trim(),
+    };
+    return _postJson("/verify-text", payload);
+  }
 
-    final img = (item["imageUrl"] ?? item["image"] ?? "").toString().trim();
-    if (img.isEmpty) return null;
-    return img;
+  static Future<Map<String, dynamic>> analyzeLink(String url) {
+    return _postJson("/analyze-link", {"url": url.trim()});
+  }
+
+  static Future<List<dynamic>> fetchTrending({bool force = false}) async {
+    return _getList("/trending");
+  }
+
+  static Future<List<dynamic>> fetchQuickExamples() async {
+    final items = await fetchTrending();
+    return items.take(5).toList();
+  }
+
+  // ✅ Robust: fixes www., //, relative paths, "null"/"none"
+  static String? resolveNewsImageUrl(Map<String, dynamic> item) {
+    String s(dynamic v) => (v ?? "").toString().trim();
+
+    bool bad(String v) {
+      final x = v.trim().toLowerCase();
+      return x.isEmpty || x == "null" || x == "none" || x == "na";
+    }
+
+    String normalize(String raw) {
+      var url = raw.trim();
+
+      // handle scheme-less urls
+      if (url.startsWith("//")) url = "https:$url";
+      if (url.startsWith("www.")) url = "https://$url";
+
+      // absolute already
+      if (url.startsWith("http://") || url.startsWith("https://")) return url;
+
+      // relative -> attach backend base
+      if (url.startsWith("/")) return "$_base$url";
+      return "$_base/$url";
+    }
+
+    // backend fixed fields first
+    final fixed = s(item["imageFixedUrl"]);
+    if (!bad(fixed)) return normalize(fixed);
+
+    final fixed2 = s(item["image_fixed_url"]);
+    if (!bad(fixed2)) return normalize(fixed2);
+
+    // common feed fields
+    final img = s(item["imageUrl"]);
+    if (!bad(img)) return normalize(img);
+
+    final img2 = s(item["image_url"]);
+    if (!bad(img2)) return normalize(img2);
+
+    final img3 = s(item["image"]);
+    if (!bad(img3)) return normalize(img3);
+
+    final thumb = s(item["thumbnail"]);
+    if (!bad(thumb)) return normalize(thumb);
+
+    return null;
   }
 }

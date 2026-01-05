@@ -1,33 +1,31 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api_service.dart';
-import 'result_screen.dart';
+import 'result/result_screen.dart';
 
 class VerifyLinkScreen extends StatefulWidget {
-  const VerifyLinkScreen({super.key});
+  final String? initialUrl;
+  const VerifyLinkScreen({super.key, this.initialUrl});
 
   @override
   State<VerifyLinkScreen> createState() => _VerifyLinkScreenState();
 }
 
 class _VerifyLinkScreenState extends State<VerifyLinkScreen> {
-  final TextEditingController _controller = TextEditingController();
+  late final TextEditingController _controller;
 
   bool _isLoading = false;
-  String? _errorText;
-  String _loadingMsg = "Analyzing link...";
+
+  // ✅ Trending (same idea as VerifyTextScreen)
+  bool _loadingTrending = false;
+  List<dynamic> _trending = [];
 
   @override
   void initState() {
     super.initState();
-    _controller.addListener(() {
-      // So suffix icon updates properly
-      if (mounted) setState(() {});
-    });
+    _controller = TextEditingController(text: widget.initialUrl ?? "");
+    _loadTrendingLinks(); // ✅ load trending links for examples section
   }
 
   @override
@@ -36,132 +34,137 @@ class _VerifyLinkScreenState extends State<VerifyLinkScreen> {
     super.dispose();
   }
 
-  Future<void> _pasteFromClipboard() async {
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    final raw = data?.text;
-    if (raw != null && raw.trim().isNotEmpty) {
-      setState(() {
-        _controller.text = raw.trim();
-        _errorText = null;
-      });
+  @override
+  void didUpdateWidget(covariant VerifyLinkScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialUrl != null &&
+        widget.initialUrl!.trim().isNotEmpty &&
+        widget.initialUrl != oldWidget.initialUrl) {
+      _controller.text = widget.initialUrl!.trim();
     }
   }
 
-  String _normalizeUrl(String input) {
-    var url = input.trim();
+  // ✅ fetch trending like HomeTab does (doesn't affect any other logic)
+  Future<void> _loadTrendingLinks() async {
+    if (_loadingTrending) return;
+    setState(() => _loadingTrending = true);
 
-    // remove accidental quotes
-    url = url.replaceAll('"', '').replaceAll("'", "");
+    try {
+      final items = await ApiService.fetchTrending();
+      if (!mounted) return;
+      setState(() {
+        _trending = items;
+        _loadingTrending = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingTrending = false);
+    }
+  }
 
-    // remove whitespace inside (common paste issue)
-    url = url.replaceAll(RegExp(r"\s+"), "");
+  String _extractTitle(dynamic item) {
+    if (item is Map<String, dynamic>) {
+      return (item["title"] ?? "Untitled").toString();
+    }
+    if (item is Map) {
+      final m = Map<String, dynamic>.from(item);
+      return (m["title"] ?? "Untitled").toString();
+    }
+    return "Untitled";
+  }
 
-    // if user pasted "www.example.com/..."
-    if (url.startsWith("www.")) {
-      url = "https://$url";
+  String? _extractUrl(dynamic item) {
+    Map<String, dynamic> m = {};
+    if (item is Map<String, dynamic>) {
+      m = item;
+    } else if (item is Map) {
+      m = Map<String, dynamic>.from(item);
     }
 
-    // if user pasted without scheme but has a dot
-    if (!url.startsWith("http://") && !url.startsWith("https://")) {
-      if (url.contains(".")) {
-        url = "https://$url";
-      }
-    }
+    final v = m["url"] ??
+        m["link"] ??
+        m["articleUrl"] ??
+        m["article_url"] ??
+        m["newsUrl"] ??
+        m["news_url"] ??
+        m["sourceUrl"] ??
+        m["source_url"] ??
+        m["webUrl"] ??
+        m["web_url"];
 
-    return url;
+    if (v == null) return null;
+
+    final s = v.toString().trim();
+    if (s.isEmpty) return null;
+
+    if (s.startsWith("www.")) return "https://$s";
+    return s;
   }
 
   bool _isValidUrl(String url) {
-    final parsed = Uri.tryParse(url);
-    return parsed != null &&
-        (parsed.scheme == "http" || parsed.scheme == "https") &&
-        parsed.host.isNotEmpty;
+    final u = url.trim();
+    if (u.isEmpty) return false;
+
+    final parsed = Uri.tryParse(u);
+    if (parsed == null) return false;
+
+    if (!(parsed.scheme == "http" || parsed.scheme == "https")) return false;
+    if (parsed.host.isEmpty) return false;
+
+    return true;
   }
 
-  Future<void> _openInBrowser(String url) async {
-    final uri = Uri.tryParse(url);
-    if (uri == null) return;
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  Future<void> _safeAnalyzeLink() async {
+    if (_isLoading) return;
+    await _analyzeLink();
   }
 
-  Future<void> _verifyLink() async {
-    final normalized = _normalizeUrl(_controller.text);
+  Future<void> _analyzeLink() async {
+    final url = _controller.text.trim();
 
-    // Update field to what we're actually sending
-    if (_controller.text.trim() != normalized) {
-      _controller.text = normalized;
-      _controller.selection = TextSelection.fromPosition(
-        TextPosition(offset: _controller.text.length),
-      );
-    }
-
-    // 1) Validate
-    if (!_isValidUrl(normalized)) {
-      setState(() => _errorText = "Please enter a valid URL (http/https).");
+    if (!_isValidUrl(url)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Invalid URL"), backgroundColor: Colors.orange),
+        const SnackBar(
+          content: Text("Please paste a valid full URL (https://...)"),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
 
-    // 2) Start loading
-    setState(() {
-      _isLoading = true;
-      _errorText = null;
-      _loadingMsg = "Fetching article content...";
-    });
+    setState(() => _isLoading = true);
 
-    try {
-      // 3) Call backend (ApiService already has timeout, but keep a UI timeout too)
-      final result = await ApiService.analyzeLink(normalized).timeout(
-        const Duration(seconds: 25),
-        onTimeout: () => {
-          "error": true,
-          "message": "Request timed out. The website may be slow/blocked or backend extraction is taking too long."
-        },
-      );
+    final result = await ApiService.analyzeLink(url);
 
-      if (!mounted) return;
+    if (!mounted) return;
+    setState(() => _isLoading = false);
 
-      // Debug print
-      // ignore: avoid_print
-      print("ANALYZE LINK RESULT: $result");
-
-      setState(() => _isLoading = false);
-
-      // 4) Show errors clearly
-      if (result["error"] == true) {
-        final msg = (result["message"] ?? "Unknown error").toString();
-        setState(() => _errorText = msg);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg), backgroundColor: Colors.red),
-        );
-        return;
-      }
-
-      // 5) Navigate to ResultScreen (pass original url for display)
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ResultScreen(
-            data: result,
-            usedQuery: result["query_used"]?.toString(),
-            originalText: result["link_title"]?.toString() ?? normalized,
-          ),
+    if (result["error"] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result["message"] ?? "Error"),
+          backgroundColor: Colors.red,
         ),
       );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-        _errorText = "Unexpected error: $e";
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Unexpected error: $e"), backgroundColor: Colors.red),
-      );
+      return;
     }
+
+    if (result is Map<String, dynamic>) {
+      result["input_url"] = result["input_url"] ?? url;
+      result["link_domain"] = result["link_domain"] ?? Uri.parse(url).host;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ResultScreen(
+          data: result,
+          originalText: url,
+          usedQuery: url,
+          resultMode: "link",
+        ),
+      ),
+    );
   }
 
   @override
@@ -171,144 +174,181 @@ class _VerifyLinkScreenState extends State<VerifyLinkScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(LucideIcons.arrowLeft, color: Colors.black87),
-          onPressed: () => Navigator.pop(context),
-        ),
         title: const Text(
           "Verify Link",
-          style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold),
+          style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w700),
         ),
         centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.black87),
       ),
-      body: Stack(
-        children: [
-          SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "Paste the news article link below",
-                    style: TextStyle(color: Colors.black54, fontSize: 14),
-                  ),
-                  const SizedBox(height: 15),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("Paste article link below", style: TextStyle(color: Colors.black54)),
+              const SizedBox(height: 12),
 
-                  // INPUT BOX
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 15,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: TextField(
-                      controller: _controller,
-                      keyboardType: TextInputType.url,
-                      style: const TextStyle(fontSize: 16, height: 1.5),
-                      decoration: InputDecoration(
-                        hintText: "https://example.com/news...",
-                        hintStyle: TextStyle(color: Colors.grey[400]),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.all(20),
-                        prefixIcon: const Icon(LucideIcons.link, color: Colors.grey),
-                        suffixIcon: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (_controller.text.trim().isEmpty)
-                              IconButton(
-                                icon: const Icon(LucideIcons.clipboard, size: 20, color: Colors.blue),
-                                tooltip: "Paste",
-                                onPressed: _pasteFromClipboard,
-                              )
-                            else ...[
-                              IconButton(
-                                icon: const Icon(LucideIcons.externalLink, size: 20, color: Colors.blue),
-                                tooltip: "Open in browser",
-                                onPressed: () => _openInBrowser(_normalizeUrl(_controller.text)),
-                              ),
-                              IconButton(
-                                icon: const Icon(LucideIcons.x, size: 20, color: Colors.grey),
-                                tooltip: "Clear",
-                                onPressed: () {
-                                  _controller.clear();
-                                  setState(() => _errorText = null);
-                                },
-                              ),
-                            ]
-                          ],
-                        ),
-                      ),
-                      onChanged: (_) => setState(() {
-                        _errorText = null;
-                      }),
-                    ),
+              TextField(
+                controller: _controller,
+                keyboardType: TextInputType.url,
+                decoration: const InputDecoration(
+                  hintText: "https://example.com/news/...",
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(14)),
                   ),
+                ),
+              ),
 
-                  if (_errorText != null) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      _errorText!,
-                      style: const TextStyle(color: Colors.red, fontSize: 13),
+              const SizedBox(height: 20),
+
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _safeAnalyzeLink,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue[600],
+                    disabledBackgroundColor: Colors.blue[200],
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    elevation: 2,
+                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text(
+                          "Analyze Link",
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                ),
+              ),
+
+              const SizedBox(height: 14),
+
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
                     ),
                   ],
-
-                  const SizedBox(height: 30),
-
-                  // BUTTON
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _verifyLink,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue[600],
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        elevation: 2,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          Icon(LucideIcons.search, color: Colors.white, size: 20),
-                          SizedBox(width: 10),
-                          Text(
-                            "Analyze Link",
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // LOADING OVERLAY
-          if (_isLoading)
-            Container(
-              color: Colors.black.withOpacity(0.15),
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const CircularProgressIndicator(),
-                    const SizedBox(height: 12),
-                    Text(
-                      _loadingMsg,
-                      style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
+                    Icon(LucideIcons.info, color: Colors.blue[700], size: 18),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        "Tip: Link verification works best for article pages (not social media screenshots). "
+                        "Paste the full URL including https://",
+                        style: TextStyle(fontSize: 13, color: Colors.black54, height: 1.35),
+                      ),
                     ),
                   ],
                 ),
               ),
-            ),
-        ],
+
+              // ✅ Trending Examples (Links)
+              const SizedBox(height: 22),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    "Trending Examples",
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                  ),
+                  IconButton(
+                    tooltip: "Refresh",
+                    onPressed: _loadTrendingLinks,
+                    icon: const Icon(LucideIcons.refreshCcw, size: 18),
+                  ),
+                ],
+              ),
+
+              if (_loadingTrending)
+                const Padding(
+                  padding: EdgeInsets.only(top: 10),
+                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                )
+              else if (_trending.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 10),
+                  child: Text("No trending links available",
+                      style: TextStyle(color: Colors.black54)),
+                )
+              else
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _trending.length > 5 ? 5 : _trending.length,
+                  itemBuilder: (context, i) {
+                    final item = _trending[i];
+                    final title = _extractTitle(item);
+                    final url = _extractUrl(item);
+
+                    return Container(
+                      margin: const EdgeInsets.only(top: 10),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 12,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(LucideIcons.trendingUp, color: Colors.green[600], size: 18),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: Colors.black87,
+                                height: 1.25,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          OutlinedButton(
+                            onPressed: (url == null || url.isEmpty)
+                                ? null
+                                : () => setState(() => _controller.text = url),
+                            child: const Text("Use"),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

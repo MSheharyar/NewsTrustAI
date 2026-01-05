@@ -1,9 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'login_screen.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final User? user = FirebaseAuth.instance.currentUser;
+
+  String get displayName {
+    return user?.displayName?.trim().isNotEmpty == true
+        ? user!.displayName!
+        : "User";
+  }
+
+  String get email {
+    return user?.email ?? "No email";
+  }
+
+  String get photoUrl {
+    return user?.photoURL ??
+        "https://i.pravatar.cc/150?img=12"; // fallback image
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -12,65 +35,115 @@ class ProfileScreen extends StatelessWidget {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // 1. Header with Avatar
+            // ---------------- HEADER ----------------
             Container(
               padding: const EdgeInsets.fromLTRB(20, 60, 20, 30),
               decoration: const BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
+                borderRadius: BorderRadius.vertical(
+                  bottom: Radius.circular(30),
+                ),
               ),
               child: Column(
                 children: [
-                  const CircleAvatar(
+                  CircleAvatar(
                     radius: 50,
-                    backgroundImage: NetworkImage('https://i.pravatar.cc/150?img=12'), // Dummy image
+                    backgroundImage: NetworkImage(photoUrl),
                   ),
                   const SizedBox(height: 15),
-                  const Text("Muhammad Abdullah", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                  const Text("abdullah.ra2345@gmail.com", style: TextStyle(color: Colors.grey)),
+
+                  Text(
+                    displayName,
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+
+                  Text(
+                    email,
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+
                   const SizedBox(height: 20),
+
                   ElevatedButton(
                     onPressed: () {},
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue[600],
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                       padding: const EdgeInsets.symmetric(horizontal: 30),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
                     ),
-                    child: const Text("Edit Profile", style: TextStyle(color: Colors.white)),
+                    child: const Text(
+                      "Edit Profile",
+                      style: TextStyle(color: Colors.white),
+                    ),
                   ),
                 ],
               ),
             ),
+
             const SizedBox(height: 20),
 
-            // 2. Settings List
+            // ---------------- SETTINGS ----------------
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 children: [
-                  _ProfileOption(icon: LucideIcons.settings, title: "Settings", onTap: () {}),
-                  _ProfileOption(icon: LucideIcons.bell, title: "Notifications", onTap: () {}),
-                  _ProfileOption(icon: LucideIcons.shield, title: "Privacy & Security", onTap: () {}),
-                  _ProfileOption(icon: LucideIcons.helpCircle, title: "Help & Support", onTap: () {}),
-                  
-                  const SizedBox(height: 20),
-                  
-                  // Logout
                   _ProfileOption(
-                    icon: LucideIcons.logOut, 
-                    title: "Log Out", 
-                    textColor: Colors.red,
-                    iconColor: Colors.red,
-                    onTap: () {
-                      Navigator.pushAndRemoveUntil(
-                        context, 
-                        MaterialPageRoute(builder: (_) => const LoginScreen()), 
-                        (route) => false
-                      );
-                    }
+                    icon: LucideIcons.settings,
+                    title: "Settings",
+                    onTap: () {},
                   ),
+                  _ProfileOption(
+                    icon: LucideIcons.bell,
+                    title: "Notifications",
+                    onTap: () {},
+                  ),
+                  _ProfileOption(
+                    icon: LucideIcons.shield,
+                    title: "Privacy & Security",
+                    onTap: () {},
+                  ),
+                  _ProfileOption(
+                    icon: LucideIcons.helpCircle,
+                    title: "Help & Support",
+                    onTap: () {},
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // ---------------- LOGOUT ----------------
+                  _ProfileOption(
+                    icon: LucideIcons.logOut,
+                    title: "Log Out",
+                    iconColor: Colors.red,
+                    textColor: Colors.red,
+                    onTap: () async {
+                      await FirebaseAuth.instance.signOut();
+                      if (!mounted) return;
+
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const LoginScreen(),
+                        ),
+                        (route) => false,
+                      );
+                    },
+                  ),
+
                   const SizedBox(height: 30),
-                  const Text("App Version 1.0.0", style: TextStyle(color: Colors.grey, fontSize: 12)),
+
+                  const Text(
+                    "App Version 1.0.0",
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 12,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -81,6 +154,7 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
+// ================= PROFILE OPTION TILE =================
 class _ProfileOption extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -88,7 +162,13 @@ class _ProfileOption extends StatelessWidget {
   final Color? textColor;
   final Color? iconColor;
 
-  const _ProfileOption({required this.icon, required this.title, required this.onTap, this.textColor, this.iconColor});
+  const _ProfileOption({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+    this.textColor,
+    this.iconColor,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -97,17 +177,39 @@ class _ProfileOption extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 5)],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 5,
+          ),
+        ],
       ),
       child: ListTile(
         onTap: onTap,
         leading: Container(
           padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(color: (iconColor ?? Colors.blue).withOpacity(0.1), shape: BoxShape.circle),
-          child: Icon(icon, color: iconColor ?? Colors.blue[700], size: 20),
+          decoration: BoxDecoration(
+            color: (iconColor ?? Colors.blue).withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            icon,
+            size: 20,
+            color: iconColor ?? Colors.blue[700],
+          ),
         ),
-        title: Text(title, style: TextStyle(fontWeight: FontWeight.w600, color: textColor ?? Colors.black87)),
-        trailing: const Icon(LucideIcons.chevronRight, size: 18, color: Colors.grey),
+        title: Text(
+          title,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: textColor ?? Colors.black87,
+          ),
+        ),
+        trailing: const Icon(
+          LucideIcons.chevronRight,
+          size: 18,
+          color: Colors.grey,
+        ),
       ),
     );
   }

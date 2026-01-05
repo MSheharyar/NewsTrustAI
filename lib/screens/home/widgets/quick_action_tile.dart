@@ -42,7 +42,10 @@ class QuickActionTile extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)),
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: Icon(icon, color: iconColor, size: 24),
             ),
             const SizedBox(width: 16),
@@ -50,9 +53,15 @@ class QuickActionTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                  Text(
+                    title,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
                   const SizedBox(height: 4),
-                  Text(subtitle, style: const TextStyle(color: Colors.black45, fontSize: 12)),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(color: Colors.black45, fontSize: 12),
+                  ),
                 ],
               ),
             ),
